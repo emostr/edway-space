@@ -219,6 +219,7 @@ export default function ClassesPage() {
               <div className="p-5 flex items-start justify-between gap-3">
                 <button
                   type="button"
+                  aria-label={`Класс ${row.name}`}
                   onClick={() => void openDetail(row.id)}
                   className="flex items-center gap-3 min-w-0 text-left cursor-pointer"
                 >

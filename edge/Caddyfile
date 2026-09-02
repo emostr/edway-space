@@ -1,0 +1,87 @@
+:80 {
+	encode zstd gzip
+
+	log {
+		output stdout
+		format console
+	}
+
+	# API и загруженные файлы отдаёт NestJS.
+	handle /api/* {
+		reverse_proxy backend:3000 {
+			@unauthorized status 401
+			handle_response @unauthorized {
+				@unauthorized_page header Accept *text/html*
+				handle @unauthorized_page {
+					rewrite * /errors/401.html
+					file_server {
+						root /srv
+						status 401
+					}
+				}
+				handle {
+					copy_response
+				}
+			}
+
+			@denied status 403
+			handle_response @denied {
+				@denied_page header Accept *text/html*
+				handle @denied_page {
+					rewrite * /errors/403.html
+					file_server {
+						root /srv
+						status 403
+					}
+				}
+				handle {
+					copy_response
+				}
+			}
+
+			@failed status 500
+			handle_response @failed {
+				@failed_page header Accept *text/html*
+				handle @failed_page {
+					rewrite * /errors/500.html
+					file_server {
+						root /srv
+						status 500
+					}
+				}
+				handle {
+					copy_response
+				}
+			}
+		}
+	}
+
+	# Всё остальное — интерфейс на Next.js.
+	handle {
+		reverse_proxy frontend:3001
+	}
+
+	handle_errors {
+		root * /srv
+
+		@page expression {err.status_code} in [401, 403, 502]
+		handle @page {
+			rewrite * /errors/{err.status_code}.html
+			file_server {
+				status {err.status_code}
+			}
+		}
+
+		@server_error expression {err.status_code} >= 500
+		handle @server_error {
+			rewrite * /errors/500.html
+			file_server {
+				status {err.status_code}
+			}
+		}
+
+		handle {
+			respond "{err.status_code} {err.status_text}" {err.status_code}
+		}
+	}
+}

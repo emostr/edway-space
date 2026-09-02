@@ -480,6 +480,12 @@
   background: #000;
 }
 
+/* Линейка под шапкой: рисуется тем же чёрным, но меткой выравнивания не является. */
+.sheet-rule {
+  position: absolute;
+  background: #000;
+}
+
 .sheet-cell {
   position: absolute;
   border: 0.35mm solid #000;

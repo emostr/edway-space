@@ -48,6 +48,11 @@ export interface SheetRow {
   number: number;
   type: SnapshotQuestion['type'];
   points: number;
+  /**
+   * Что ученик пишет в клетках. Чем уже алфавит, тем меньше ошибок при
+   * распознавании: букву «З» и цифру «3» иначе не различить.
+   */
+  alphabet: 'letters' | 'digits' | 'text';
   /** Подпись под клетками: «буква варианта», «до 3 букв», «ответ словом». */
   hint: string;
   y: number;
@@ -66,6 +71,13 @@ export interface SheetLayout {
   /** Задания, которые в бланк не попадают: их пишут на обороте. */
   extended: { questionId: string; number: number; points: number }[];
   sheet: typeof SHEET;
+}
+
+function alphabetFor(question: SnapshotQuestion): SheetRow['alphabet'] {
+  if (question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') {
+    return 'letters';
+  }
+  return question.answerKey?.numeric ? 'digits' : 'text';
 }
 
 function hintFor(question: SnapshotQuestion, cells: number): string {
@@ -117,6 +129,7 @@ export function buildSheetLayout(snapshot: TestSnapshot): SheetLayout {
       number,
       type: question.type,
       points: question.points,
+      alphabet: alphabetFor(question),
       hint: hintFor(question, cells),
       y,
       cells: rowCells(cells, y),

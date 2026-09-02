@@ -11,10 +11,37 @@ import { recognizeBatch, recognizeOne } from './tesseract';
 /** Пустая клетка почти не содержит тёмного: всё, что ниже порога, не распознаём. */
 const INK_EMPTY = 0.02;
 
-const LETTER_WHITELIST = 'АБВГДЕЖЗИКABCDEGHIK';
-const TEXT_WHITELIST =
-  'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,-+/()=<>';
+type Alphabet = 'letters' | 'digits' | 'text';
+
+/**
+ * Ограничение алфавита (tessedit_char_whitelist) в LSTM-движке помогает
+ * только латинице и цифрам: со списком кириллицы распознавание кириллицы
+ * же и ломается — печатная «Б» приходит пустой строкой. Поэтому буквы и
+ * свободный текст читаем без ограничений, а лишнее отбрасываем сами.
+ */
+const WHITELIST: Record<Alphabet, string> = {
+  letters: '',
+  digits: '0123456789.,-/',
+  text: '',
+};
+
+const LANG: Record<Alphabet, string> = {
+  letters: 'rus',
+  digits: 'eng',
+  text: 'rus+eng',
+};
+
+/** Что оставляем от прочитанного: всё остальное — шум от краёв клетки. */
+const ALLOWED: Record<Alphabet, RegExp> = {
+  letters: /[А-ЯЁA-Z]/,
+  digits: /[0-9.,\-/]/,
+  text: /[А-ЯЁA-Za-z0-9.,+\-/()=<>]/,
+};
+
 const CODE_WHITELIST = '0123456789ABCDEFGHJKMNPQRSTVWXYZ-/';
+
+/** Режим страницы 10 — «в кадре ровно один знак»: это и есть клетка бланка. */
+const CELL_PSM = 10;
 
 export interface RecognizedAnswer {
   questionId: string;
@@ -55,7 +82,15 @@ export class OcrService {
    * отдельно буквы вариантов, отдельно свободный текст.
    */
   async recognize(file: string, layout: SheetLayout): Promise<RecognizedSheet> {
-    const workDir = await fs.mkdtemp(join(tmpdir(), 'edway-ocr-'));
+    // OCR_DEBUG_DIR оставляет нарезанные клетки на диске: когда лист читается
+    // плохо, посмотреть на сами вырезки быстрее, чем гадать по результату.
+    const debugDir = process.env.OCR_DEBUG_DIR;
+    const workDir = debugDir
+      ? join(debugDir, `sheet-${Date.now()}`)
+      : await fs.mkdtemp(join(tmpdir(), 'edway-ocr-'));
+    if (debugDir) {
+      await fs.mkdir(workDir, { recursive: true });
+    }
     try {
       let image = await loadGrey(file);
       let threshold = otsuThreshold(image);
@@ -91,7 +126,9 @@ export class OcrService {
 
       return { code, pageIndex, answers, skewDeg: markers.skewDeg };
     } finally {
-      await fs.rm(workDir, { recursive: true, force: true });
+      if (!debugDir) {
+        await fs.rm(workDir, { recursive: true, force: true });
+      }
     }
   }
 
@@ -128,6 +165,45 @@ export class OcrService {
   }
 
   /** В углу бланка напечатано «XXXX-XXXX/1»: код работы и номер страницы. */
+  /**
+   * Готовит клетку к распознаванию. Порядок важен: сначала обрезаем пустое
+   * поле вокруг знака, и только потом масштабируем. Знак, прижатый к своему
+   * кадру, движок читает уверенно, а тот же знак посреди белого поля —
+   * почти никогда.
+   */
+  private async writeCell(
+    flat: string,
+    area: { left: number; top: number; width: number; height: number },
+    file: string,
+  ): Promise<void> {
+    // Белая рамка перед обрезкой обязательна: trim ориентируется на цвет
+    // углового пикселя, а в углу клетки может оказаться штрих знака —
+    // тогда обрезано будет ровно наоборот, до самого знака.
+    const framed = await sharp(flat)
+      .extract(area)
+      .normalise()
+      .extend({ top: 8, bottom: 8, left: 8, right: 8, background: '#ffffff' })
+      .png()
+      .toBuffer();
+
+    let prepared: Buffer;
+    try {
+      prepared = await sharp(framed).trim({ threshold: 40 }).png().toBuffer();
+    } catch {
+      // Однотонной картинке обрезать нечего — trim на ней падает.
+      prepared = framed;
+    }
+
+    await sharp(prepared)
+      .resize({ height: 64, fit: 'inside', kernel: 'lanczos3', withoutEnlargement: false })
+      // Поля вокруг знака: без них движок принимает знак за обрезанный.
+      .extend({ top: 20, bottom: 20, left: 20, right: 20, background: '#ffffff' })
+      // Плотность важна: без неё tesseract ругается на 25 dpi и теряет точность.
+      .withMetadata({ density: 300 })
+      .png()
+      .toFile(file);
+  }
+
   private async readCode(
     flat: string,
     mapper: (x: number, y: number) => Point,
@@ -137,9 +213,10 @@ export class OcrService {
     const file = join(dir, 'code.png');
     await sharp(flat)
       .extract(area)
-      .resize({ height: 120, fit: 'inside', withoutEnlargement: false })
-      .sharpen()
-      .threshold(150)
+      .normalise()
+      .resize({ height: 90, fit: 'inside', kernel: 'lanczos3', withoutEnlargement: false })
+      .extend({ top: 20, bottom: 20, left: 20, right: 20, background: '#ffffff' })
+      .withMetadata({ density: 300 })
       .png()
       .toFile(file);
 
@@ -165,14 +242,13 @@ export class OcrService {
       questionId: string;
       cellIndex: number;
       file: string;
-      letters: boolean;
+      alphabet: Alphabet;
     }
 
     const byQuestion = new Map<string, { filled: number; total: number; chars: string[] }>();
     const slots: Slot[] = [];
 
     for (const row of page.rows) {
-      const letters = row.type === 'SINGLE_CHOICE' || row.type === 'MULTIPLE_CHOICE';
       byQuestion.set(row.questionId, {
         filled: 0,
         total: row.cells.length,
@@ -193,18 +269,14 @@ export class OcrService {
         }
 
         const file = join(dir, `c-${row.number}-${cell.index}.png`);
-        await sharp(flat)
-          .extract(area)
-          // Тессеракт увереннее читает крупный знак: поднимаем клетку до ~160 px.
-          .resize({ height: 160, fit: 'inside', withoutEnlargement: false })
-          .flatten({ background: '#ffffff' })
-          .sharpen()
-          .threshold(160)
-          .extend({ top: 12, bottom: 12, left: 12, right: 12, background: '#ffffff' })
-          .png()
-          .toFile(file);
+        await this.writeCell(flat, area, file);
 
-        slots.push({ questionId: row.questionId, cellIndex: cell.index, file, letters });
+        slots.push({
+          questionId: row.questionId,
+          cellIndex: cell.index,
+          file,
+          alphabet: row.alphabet ?? 'text',
+        });
         const state = byQuestion.get(row.questionId);
         if (state) {
           state.filled += 1;
@@ -212,21 +284,25 @@ export class OcrService {
       }
     }
 
-    const letterSlots = slots.filter((s) => s.letters);
-    const textSlots = slots.filter((s) => !s.letters);
+    // По батчу на алфавит: один процесс tesseract вместо вызова на клетку.
+    const groups = (['letters', 'digits', 'text'] as const).map((alphabet) => ({
+      alphabet,
+      slots: slots.filter((slot) => slot.alphabet === alphabet),
+    }));
 
-    const [letterText, freeText] = await Promise.all([
-      recognizeBatch(
-        letterSlots.map((s) => s.file),
-        dir,
-        { psm: 10, lang: 'rus', whitelist: LETTER_WHITELIST },
+    const recognized = await Promise.all(
+      groups.map((group) =>
+        recognizeBatch(
+          group.slots.map((slot) => slot.file),
+          dir,
+          {
+            psm: CELL_PSM,
+            lang: LANG[group.alphabet],
+            whitelist: WHITELIST[group.alphabet] || undefined,
+          },
+        ),
       ),
-      recognizeBatch(
-        textSlots.map((s) => s.file),
-        dir,
-        { psm: 10, lang: 'rus+eng', whitelist: TEXT_WHITELIST },
-      ),
-    ]);
+    );
 
     const confidence = new Map<string, { read: number; total: number }>();
     const apply = (slot: Slot, value: string) => {
@@ -234,8 +310,12 @@ export class OcrService {
       if (!state) {
         return;
       }
-      const clean = (value ?? '').replace(/\s+/g, '').slice(0, 1);
-      state.chars[slot.cellIndex] = clean;
+      // От прочитанного берём первый подходящий знак: движок иногда дописывает
+      // к ответу мусор с краёв клетки.
+      const clean = [...(value ?? '').replace(/\s+/g, '')].find((char) =>
+        ALLOWED[slot.alphabet].test(char.toUpperCase()),
+      );
+      state.chars[slot.cellIndex] = clean ? clean.toUpperCase() : '';
       const score = confidence.get(slot.questionId) ?? { read: 0, total: 0 };
       score.total += 1;
       if (clean) {
@@ -244,8 +324,9 @@ export class OcrService {
       confidence.set(slot.questionId, score);
     };
 
-    letterSlots.forEach((slot, index) => apply(slot, letterText[index] ?? ''));
-    textSlots.forEach((slot, index) => apply(slot, freeText[index] ?? ''));
+    groups.forEach((group, groupIndex) => {
+      group.slots.forEach((slot, index) => apply(slot, recognized[groupIndex][index] ?? ''));
+    });
 
     return page.rows.map((row) => {
       const state = byQuestion.get(row.questionId);

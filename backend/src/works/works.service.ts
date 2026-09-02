@@ -7,10 +7,20 @@ import { OcrService, SheetNotAlignedError } from '../ocr/ocr.service';
 import { TesseractMissingError } from '../ocr/tesseract';
 import { buildSheetLayout } from '../ocr/sheet';
 import { SnapshotQuestion, TestSnapshot, gradeFor, judge } from '../tests/scoring';
+import { levenshtein } from '../common/text';
+import { normalizeCode } from '../common/crypto/codes';
 import { UpdateAnswerDto } from './dto/works.dto';
 
 /** Ниже этой уверенности распознавания работу обязательно смотрит учитель. */
 const REVIEW_CONFIDENCE = 0.75;
+
+/**
+ * Сколько ошибок в коде бланка прощаем. «5» и «S», «8» и «B» путаются даже
+ * на хорошем скане, а кодов в назначении — десятки, поэтому ближайший из них
+ * определяется однозначно. Если близких оказалось несколько, лист уходит
+ * учителю на ручную привязку.
+ */
+const CODE_TOLERANCE = 2;
 
 export interface WorkAnswer {
   questionId: string;
@@ -70,6 +80,34 @@ export class WorksService {
     return snapshot;
   }
 
+  /** Ищет бланк по прочитанному коду, прощая одну-две ошибки распознавания. */
+  private matchCode<T extends { code: string }>(works: T[], scanned: string): T | null {
+    const normalized = normalizeCode(scanned);
+    if (!normalized) {
+      return null;
+    }
+
+    const exact = works.find((work) => work.code === normalized);
+    if (exact) {
+      return exact;
+    }
+
+    const ranked = works
+      .map((work) => ({ work, distance: levenshtein(work.code, normalized) }))
+      .filter((row) => row.distance <= CODE_TOLERANCE)
+      .sort((a, b) => a.distance - b.distance);
+
+    if (!ranked.length) {
+      return null;
+    }
+    // Двусмысленность решаем в пользу учителя: пусть привяжет сам.
+    if (ranked.length > 1 && ranked[0].distance === ranked[1].distance) {
+      return null;
+    }
+    this.logger.log(`Код «${scanned}» прочитан с ошибкой, ближайший бланк: ${ranked[0].work.code}`);
+    return ranked[0].work;
+  }
+
   /**
    * Пачка сканов: каждый лист сам говорит, чей он — код в углу читается
    * первым. Что не прочиталось, возвращаем учителю на ручную привязку.
@@ -88,7 +126,6 @@ export class WorksService {
 
     const snapshot = this.snapshotOf(assignment);
     const layout = buildSheetLayout(snapshot);
-    const byCode = new Map(assignment.works.map((w) => [w.code, w]));
 
     const outcome: UploadOutcome = { matched: [], unmatched: [] };
     const touched = new Set<string>();
@@ -112,7 +149,7 @@ export class WorksService {
         continue;
       }
 
-      const work = byCode.get(recognized.code);
+      const work = this.matchCode(assignment.works, recognized.code);
       if (!work) {
         outcome.unmatched.push({
           file: stored.file,

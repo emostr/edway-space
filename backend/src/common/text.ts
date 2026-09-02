@@ -55,6 +55,29 @@ export function titleCase(value: string): string {
     .join(' ');
 }
 
+/** Расстояние Левенштейна: им сверяют коды бланков, прочитанные с ошибкой. */
+export function levenshtein(a: string, b: string): number {
+  if (a === b) {
+    return 0;
+  }
+  if (!a.length) {
+    return b.length;
+  }
+  if (!b.length) {
+    return a.length;
+  }
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 0; i < a.length; i += 1) {
+    const current = [i + 1];
+    for (let j = 0; j < b.length; j += 1) {
+      const cost = a[i] === b[j] ? 0 : 1;
+      current.push(Math.min(current[j] + 1, previous[j + 1] + 1, previous[j] + cost));
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+
 export const CLASS_LETTERS = 'АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЩЭЮЯ'.split('');
 
 export function className(number: number, letter: string): string {

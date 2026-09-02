@@ -64,6 +64,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const element = document.documentElement;
     element.setAttribute('data-theme', theme);
     element.setAttribute('data-accent', accent);
+    // Метка «страница ожила»: до неё разметка отрисована, но обработчики
+    // ещё не навешаны. По ней ждут готовности автотесты.
+    element.dataset.hydrated = 'true';
   }, [theme, accent]);
 
   const setTheme = useCallback((value: string) => {

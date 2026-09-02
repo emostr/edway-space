@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { extname, join, normalize } from 'node:path';
+import { extname, isAbsolute, join, normalize, resolve } from 'node:path';
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import sharp from 'sharp';
@@ -26,7 +26,11 @@ export class StorageService implements OnModuleInit {
   readonly root: string;
 
   constructor(private readonly config: ConfigService) {
-    this.root = this.config.get<string>('UPLOAD_DIR') ?? '/data/uploads';
+    // Путь приводим к абсолютному: относительный UPLOAD_DIR (удобный в
+    // разработке) иначе не проходил бы собственную проверку на выход за
+    // пределы каталога.
+    const configured = this.config.get<string>('UPLOAD_DIR') ?? '/data/uploads';
+    this.root = isAbsolute(configured) ? configured : resolve(process.cwd(), configured);
   }
 
   async onModuleInit(): Promise<void> {

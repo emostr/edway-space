@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-edway}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-edway}
+      POSTGRES_DB: ${POSTGRES_DB:-edway}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-edway} -d ${POSTGRES_DB:-edway}']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-edway}:${POSTGRES_PASSWORD:-edway}@postgres:5432/${POSTGRES_DB:-edway}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8020}
+      SESSION_DAYS: ${SESSION_DAYS:-90}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      # Сканы работ и картинки заданий переживают пересборку образа.
+      - uploads:/data/uploads
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  edge:
+    build: ./edge
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - '${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-8020}:80'
+
+volumes:
+  pgdata:
+  uploads:

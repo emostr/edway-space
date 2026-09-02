@@ -1,0 +1,44 @@
+# пример конфигурации caddy
+# такой файл скрипт deploy.sh генерирует автоматически в /etc/caddy/conf.d/edway.caddy
+
+example.com {
+	tls admin@example.com
+
+	encode zstd gzip
+
+	# Сканы класса уезжают одной пачкой, поэтому лимит выше обычного.
+	request_body {
+		max_size 64MB
+	}
+
+	log {
+		output file /var/log/caddy/edway.log
+	}
+
+	reverse_proxy 127.0.0.1:8020
+
+	# страницы ошибок кладёт deploy.sh из frontend/public/errors
+	handle_errors {
+		root * /var/www/edway-errors
+
+		@page expression {err.status_code} in [401, 403, 502]
+		handle @page {
+			rewrite * /{err.status_code}.html
+			file_server {
+				status {err.status_code}
+			}
+		}
+
+		@server_error expression {err.status_code} >= 500
+		handle @server_error {
+			rewrite * /500.html
+			file_server {
+				status {err.status_code}
+			}
+		}
+
+		handle {
+			respond "{err.status_code} {err.status_text}" {err.status_code}
+		}
+	}
+}

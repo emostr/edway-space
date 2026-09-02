@@ -228,7 +228,7 @@ function AnswerSheet({ data, work, pageIndex }: SheetProps) {
             и не обрезайте углы листа с чёрными квадратами.
           </div>
           <div
-            className="sheet-marker"
+            className="sheet-rule"
             style={{ left: mm(sheet.left), top: mm(62), width: mm(sheet.right - sheet.left), height: '0.4mm' }}
           />
         </>
