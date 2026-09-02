@@ -1,10 +1,13 @@
 'use client';
 
-import { useId } from 'react';
+import { useId, type Ref } from 'react';
 
 interface Props {
   value?: string;
   onChange?: (value: string) => void;
+  /** Нужен там, где важно положение курсора: вставка формулы по месту. */
+  ref?: Ref<HTMLTextAreaElement>;
+  autoFocus?: boolean;
   label?: string;
   placeholder?: string;
   hint?: string;
@@ -18,6 +21,8 @@ interface Props {
 export function Textarea({
   value = '',
   onChange,
+  ref,
+  autoFocus = false,
   label = '',
   placeholder = '',
   hint = '',
@@ -44,6 +49,8 @@ export function Textarea({
       ) : null}
       <textarea
         id={uid}
+        ref={ref}
+        autoFocus={autoFocus}
         rows={rows}
         placeholder={placeholder}
         disabled={disabled}

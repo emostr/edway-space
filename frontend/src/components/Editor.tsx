@@ -5,30 +5,11 @@ import katex from 'katex';
 import { EditorContent, useEditor, type Editor as TipTapEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
-import { Button, Icon, Input, Modal } from '@/lib/ui';
+import { Button, Icon, Input, Modal, Textarea } from '@/lib/ui';
 import { api, errorMessage } from '@/lib/api';
 import { notify } from '@/lib/notify';
+import { FORMULA_GROUPS } from '@/lib/formulas';
 import { MathInline } from './MathNode';
-
-/** Готовые заготовки: набирать их руками каждый раз незачем. */
-const SNIPPETS: { label: string; latex: string }[] = [
-  { label: 'Дробь', latex: '\\frac{a}{b}' },
-  { label: 'Степень', latex: 'x^{2}' },
-  { label: 'Индекс', latex: 'x_{1}' },
-  { label: 'Корень', latex: '\\sqrt{x}' },
-  { label: 'Корень n-й', latex: '\\sqrt[n]{x}' },
-  { label: 'Сумма', latex: '\\sum_{i=1}^{n} a_i' },
-  { label: 'Интеграл', latex: '\\int_{a}^{b} f(x)\\,dx' },
-  { label: 'Предел', latex: '\\lim_{x \\to 0} f(x)' },
-  { label: 'Система', latex: '\\begin{cases} x + y = 2 \\\\ x - y = 0 \\end{cases}' },
-  { label: 'Не равно', latex: 'a \\neq b' },
-  { label: 'Меньше-равно', latex: 'a \\leqslant b' },
-  { label: 'Градусы', latex: '90^{\\circ}' },
-  { label: 'Пи', latex: '\\pi' },
-  { label: 'Альфа', latex: '\\alpha' },
-  { label: 'Умножить', latex: 'a \\cdot b' },
-  { label: 'Треугольник', latex: '\\triangle ABC' },
-];
 
 interface Props {
   value: string;
@@ -40,10 +21,11 @@ interface Props {
 export function Editor({ value, onChange, placeholder = 'Текст задания…', minHeight = 120 }: Props) {
   const [formulaOpen, setFormulaOpen] = useState(false);
   const [formula, setFormula] = useState('');
+  const [search, setSearch] = useState('');
   const [editing, setEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const preview = useRef<HTMLDivElement>(null);
+  const formulaField = useRef<HTMLTextAreaElement>(null);
 
   const editor = useEditor({
     // Разметку страницы Next рисует и на сервере: без этого флага React
@@ -80,8 +62,31 @@ export function Editor({ value, onChange, placeholder = 'Текст задани
     const active = editor.isActive('formula');
     setEditing(active);
     setFormula(active ? String(editor.getAttributes('formula').latex ?? '') : '');
+    setSearch('');
     setFormulaOpen(true);
   }, [editor]);
+
+  /**
+   * Заготовка вставляется туда, где стоит курсор, а не в конец строки: иначе
+   * дописать степень внутри уже набранной дроби невозможно.
+   */
+  function insertSnippet(latex: string) {
+    const field = formulaField.current;
+    if (!field) {
+      setFormula((current) => (current ? `${current} ${latex}` : latex));
+      return;
+    }
+    const start = field.selectionStart ?? formula.length;
+    const end = field.selectionEnd ?? formula.length;
+    const next = `${formula.slice(0, start)}${latex}${formula.slice(end)}`;
+    setFormula(next);
+    // Возвращаем курсор за вставленный кусок, чтобы можно было печатать дальше.
+    requestAnimationFrame(() => {
+      field.focus();
+      const caret = start + latex.length;
+      field.setSelectionRange(caret, caret);
+    });
+  }
 
   function applyFormula() {
     if (!editor || !formula.trim()) {
@@ -139,7 +144,7 @@ export function Editor({ value, onChange, placeholder = 'Текст задани
         onClose={() => setFormulaOpen(false)}
         title={editing ? 'Правка формулы' : 'Формула'}
         subtitle="Синтаксис LaTeX — как в учебнике"
-        size="lg"
+        size="xl"
         footer={
           <>
             <Button variant="ghost" onClick={() => setFormulaOpen(false)}>
@@ -151,39 +156,86 @@ export function Editor({ value, onChange, placeholder = 'Текст задани
           </>
         }
       >
-        <Input
-          value={formula}
-          onChange={setFormula}
-          label="Формула"
-          placeholder="\frac{1}{2} + \sqrt{x}"
-          autoFocus
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div>
+            <Textarea
+              ref={formulaField}
+              value={formula}
+              onChange={setFormula}
+              label="Формула"
+              rows={4}
+              placeholder="\frac{1}{2} + \sqrt{x}"
+              autoFocus
+            />
 
-        <div className="mt-4">
-          <div className="ng-label text-muted mb-2">Предпросмотр</div>
-          <div
-            ref={preview}
-            className="border border-line bg-surface px-4 py-5 text-center text-ink min-h-[64px] flex items-center justify-center"
-            dangerouslySetInnerHTML={{ __html: renderPreview(formula) }}
-          />
+            <div className="mt-4">
+              <div className="ng-label text-muted mb-2">Предпросмотр</div>
+              <div
+                className="border border-line bg-surface px-4 py-5 text-center text-ink min-h-[84px] flex items-center justify-center overflow-x-auto"
+                dangerouslySetInnerHTML={{ __html: renderPreview(formula) }}
+              />
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <Input
+              value={search}
+              onChange={setSearch}
+              label="Заготовки"
+              icon="search"
+              placeholder="дробь, корень, вектор…"
+            />
+            <SnippetList search={search} onPick={insertSnippet} />
+          </div>
         </div>
+      </Modal>
+    </div>
+  );
+}
 
-        <div className="mt-4">
-          <div className="ng-label text-muted mb-2">Заготовки</div>
+interface SnippetListProps {
+  search: string;
+  onPick: (latex: string) => void;
+}
+
+/** Заготовки по разделам; поиск сводит их в один список подходящих. */
+function SnippetList({ search, onPick }: SnippetListProps) {
+  const needle = search.trim().toLowerCase();
+  const groups = FORMULA_GROUPS.map((group) => ({
+    title: group.title,
+    items: needle
+      ? group.items.filter(
+          (item) =>
+            item.label.toLowerCase().includes(needle) || item.latex.toLowerCase().includes(needle),
+        )
+      : group.items,
+  })).filter((group) => group.items.length);
+
+  if (!groups.length) {
+    return <p className="text-sm text-muted mt-4">Ничего не нашлось — наберите формулу вручную.</p>;
+  }
+
+  return (
+    <div className="mt-3 max-h-[420px] overflow-y-auto pr-1 space-y-4">
+      {groups.map((group) => (
+        <div key={group.title}>
+          <div className="ng-label text-faint mb-1.5">{group.title}</div>
           <div className="flex flex-wrap gap-1.5">
-            {SNIPPETS.map((snippet) => (
+            {group.items.map((item) => (
               <button
-                key={snippet.label}
+                key={`${group.title}-${item.label}`}
                 type="button"
+                title={item.latex}
+                data-latex={item.latex}
                 className="px-2.5 py-1 text-xs border border-line bg-surface hover:border-accent hover:text-accent transition-colors cursor-pointer"
-                onClick={() => setFormula((current) => (current ? `${current} ${snippet.latex}` : snippet.latex))}
+                onClick={() => onPick(item.latex)}
               >
-                {snippet.label}
+                {item.label}
               </button>
             ))}
           </div>
         </div>
-      </Modal>
+      ))}
     </div>
   );
 }

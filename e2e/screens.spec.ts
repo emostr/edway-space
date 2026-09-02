@@ -38,6 +38,7 @@ test('обход разделов со снимками', async ({ page }) => {
   await page.keyboard.type('Найдите значение выражения ');
   await page.getByTitle('Формула (LaTeX)').click();
   await fillField(page, page.getByLabel('Формула'), '\\frac{3}{4} + \\sqrt{16}');
+  await page.waitForTimeout(200);
   await shot('04-formula-editor');
   await page.getByRole('button', { name: 'Вставить' }).click();
   await page.getByPlaceholder(/^Вариант А/).fill('4,75');
