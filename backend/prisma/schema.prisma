@@ -1,0 +1,286 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "cjs"
+  importFileExtension = ""
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Учётные записи ────────────────────────────────────────────────────────
+// Платформа селфхостная, школьная: регистрация свободная. Учитель вписывает
+// фамилию и имя, логин собирается транслитом, пароль он задаёт сам.
+// Учеников как пользователей в системе нет — они пишут работы на бумаге.
+
+model Teacher {
+  id           String    @id @default(cuid())
+  login        String    @unique
+  passwordHash String
+  fullName     String
+  // Предмет виден коллегам в списке, с кем можно поделиться тестом.
+  subject      String    @default("")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  sessions      AuthSession[]
+  tests         Test[]
+  sharesGiven   TestShare[]   @relation("ShareOwner")
+  sharesGot     TestShare[]   @relation("ShareTarget")
+  assignments    Assignment[]
+  checkedWorks   Work[]
+  createdClasses SchoolClass[]
+  uploads        MediaFile[]
+
+  @@index([deletedAt])
+}
+
+model AuthSession {
+  id         String    @id @default(cuid())
+  teacherId  String
+  teacher    Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  lastSeenAt DateTime  @default(now())
+  userAgent  String    @default("")
+  ip         String    @default("")
+  revokedAt  DateTime?
+
+  @@index([teacherId])
+  @@index([expiresAt])
+}
+
+// ─── Классы и ученики ──────────────────────────────────────────────────────
+// Классы общие для школы: их заводит любой учитель, назначать тесты может
+// каждый. Список учеников нужен, чтобы бланк печатался уже с фамилией —
+// тогда распознавать при проверке остаётся только сами ответы.
+
+model SchoolClass {
+  id          String    @id @default(cuid())
+  number      Int // 1..11
+  letter      String // А..Я
+  createdById String?
+  createdBy   Teacher?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  archivedAt  DateTime?
+  // Пустая строка у действующего класса, отметка времени — у сданного в архив:
+  // «11А» выпуска 2026 и новый «11А» спокойно живут в одной таблице.
+  archiveKey  String    @default("")
+
+  students    Student[]
+  assignments Assignment[]
+
+  @@unique([number, letter, archiveKey])
+  @@index([number])
+  @@index([archivedAt])
+}
+
+model Student {
+  id         String      @id @default(cuid())
+  classId    String
+  class      SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  lastName   String
+  firstName  String
+  // Нормализованное «фамилияимя» — по нему ищем дубли при импорте списка.
+  searchKey  String
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  archivedAt DateTime?
+
+  works Work[]
+
+  @@index([classId, searchKey])
+  @@index([archivedAt])
+}
+
+// ─── Тесты ─────────────────────────────────────────────────────────────────
+
+enum QuestionType {
+  // Один правильный вариант: в бланке одна клетка под букву.
+  SINGLE_CHOICE
+  // Несколько правильных: в бланке несколько клеток под буквы.
+  MULTIPLE_CHOICE
+  // Короткий ответ: слово, число или формула — по клетке на символ.
+  SHORT_ANSWER
+  // Развёрнутый ответ: пишется на обороте, проверяется только вручную.
+  EXTENDED
+}
+
+model Test {
+  id           String  @id @default(cuid())
+  title        String
+  description  String  @default("")
+  // Инструкция печатается на бланке и показывается при выдаче.
+  instructions String  @default("")
+  // Пока тест не опубликован, назначить его классу нельзя.
+  isPublished  Boolean @default(false)
+
+  ownerId   String
+  owner     Teacher   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Пороги оценок в процентах от максимума: { "5": 85, "4": 70, "3": 50 }.
+  gradeScale Json @default("{\"5\":85,\"4\":70,\"3\":50}")
+
+  questions   Question[]
+  shares      TestShare[]
+  assignments Assignment[]
+
+  @@index([ownerId])
+  @@index([deletedAt])
+}
+
+model Question {
+  id     String       @id @default(cuid())
+  testId String
+  test   Test         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  order  Int
+  type   QuestionType
+  // Текст задания из визуального редактора: HTML с формулами KaTeX.
+  // Формула лежит как <span data-formula="\frac{1}{2}"></span> — так она
+  // переживает и правку в редакторе, и печать бланка.
+  content String      @default("")
+  points  Int         @default(1)
+
+  // Варианты ответа: [{ id, content }] — порядок задаёт буквы А, Б, В…
+  options Json @default("[]")
+  // Ключ проверки:
+  //   SINGLE_CHOICE   { "correct": ["o1"] }
+  //   MULTIPLE_CHOICE { "correct": ["o1","o3"], "partial": true }
+  //   SHORT_ANSWER    { "accepted": ["Париж"], "caseSensitive": false, "numeric": false, "tolerance": 0 }
+  //   EXTENDED        { "guideline": "что засчитывать" }
+  answerKey Json @default("{}")
+
+  @@index([testId, order])
+}
+
+// Доступ к чужому тесту: владелец делится им с коллегой из списка.
+model TestShare {
+  id        String   @id @default(cuid())
+  testId    String
+  test      Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  ownerId   String
+  owner     Teacher  @relation("ShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  teacherId String
+  teacher   Teacher  @relation("ShareTarget", fields: [teacherId], references: [id], onDelete: Cascade)
+  // false — коллега только смотрит и назначает, true — ещё и правит.
+  canEdit   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([testId, teacherId])
+  @@index([teacherId])
+}
+
+// ─── Назначения ────────────────────────────────────────────────────────────
+// Назначение = этот тест, этому классу, на эту дату. Оно же — пачка бланков.
+
+model Assignment {
+  id          String      @id @default(cuid())
+  testId      String
+  test        Test        @relation(fields: [testId], references: [id], onDelete: Cascade)
+  classId     String
+  class       SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  date        DateTime    @db.Date
+  note        String      @default("")
+  createdById String
+  createdBy   Teacher     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  // Проверка завершена: оценки выставлены и попали в журнал.
+  closedAt    DateTime?
+
+  // Снимок теста на момент выдачи: задания, баллы, ключи и пороги оценок.
+  // Правка теста задним числом не должна менять уже проверенные работы.
+  snapshot Json @default("{}")
+
+  works Work[]
+
+  @@unique([testId, classId, date])
+  @@index([classId, date])
+  @@index([date])
+}
+
+// ─── Работы ────────────────────────────────────────────────────────────────
+
+enum WorkStatus {
+  // Бланк напечатан, работа ещё не загружена.
+  PENDING
+  // Скан загружен и распознан, но учитель его не подтвердил.
+  RECOGNIZED
+  // Есть задания, которые платформа не проверяет сама.
+  NEEDS_REVIEW
+  // Проверена, оценка выставлена.
+  CHECKED
+}
+
+model Work {
+  id           String     @id @default(cuid())
+  assignmentId String
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  studentId    String?
+  student      Student?   @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  // Запасной бланк без фамилии подписывается от руки, учитель привяжет ученика сам.
+  studentName  String     @default("")
+  // Код бланка: печатается в углу и читается при загрузке скана.
+  code         String     @unique
+  status       WorkStatus @default(PENDING)
+
+  // Загруженные страницы скана.
+  pages ScanPage[]
+
+  // Разбор ответов:
+  // [{ questionId, type, raw, value, correct, score, maxScore, auto, comment, confidence }]
+  answers Json @default("[]")
+
+  autoScore   Int  @default(0)
+  manualScore Int  @default(0)
+  maxScore    Int  @default(0)
+  // Итоговая оценка 2..5 — считается по порогам из снимка теста.
+  grade       Int?
+  percent     Int  @default(0)
+
+  scannedAt   DateTime?
+  checkedAt   DateTime?
+  checkedById String?
+  checkedBy   Teacher?  @relation(fields: [checkedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([assignmentId, status])
+  @@index([studentId])
+}
+
+model ScanPage {
+  id        String   @id @default(cuid())
+  workId    String
+  work      Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  // Имя файла в каталоге загрузок (UPLOAD_DIR).
+  file      String
+  index     Int      @default(0)
+  width     Int      @default(0)
+  height    Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([workId, index])
+}
+
+// Картинки, вставленные в текст задания визуальным редактором. Отдельная
+// таблица нужна, чтобы знать владельца файла и уметь чиститьброшенные.
+model MediaFile {
+  id        String   @id @default(cuid())
+  file      String   @unique
+  mime      String   @default("image/webp")
+  width     Int      @default(0)
+  height    Int      @default(0)
+  size      Int      @default(0)
+  ownerId   String?
+  owner     Teacher? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([ownerId])
+}
