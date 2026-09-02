@@ -22,7 +22,7 @@ test('бланк со вписанными ответами распознаёт
   // ─── Класс из одного ученика ─────────────────────────────────────────────
   await open(page, '/classes');
   const target = await freeClass(page);
-  await page.getByRole('button', { name: 'Создать класс' }).click();
+  await page.getByRole('button', { name: 'Создать класс' }).first().click();
   await page.getByLabel('Номер').selectOption(String(target.number));
   await page.getByLabel('Буква').selectOption(target.letter);
   await page.getByRole('button', { name: 'Создать', exact: true }).click();

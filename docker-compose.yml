@@ -7,7 +7,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-edway}
       POSTGRES_DB: ${POSTGRES_DB:-edway}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # В образах 18+ том монтируется в /var/lib/postgresql целиком: сами данные
+      # лежат в подкаталоге, и обновление мажорной версии не упирается в границу
+      # точки монтирования.
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-edway} -d ${POSTGRES_DB:-edway}']
       interval: 5s
@@ -28,6 +31,7 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8020}
       SESSION_DAYS: ${SESSION_DAYS:-90}
       UPLOAD_DIR: /data/uploads
+      OCR_DEBUG_DIR: ${OCR_DEBUG_DIR:-}
     volumes:
       # Сканы работ и картинки заданий переживают пересборку образа.
       - uploads:/data/uploads

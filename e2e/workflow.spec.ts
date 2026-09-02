@@ -18,7 +18,7 @@ test('путь от класса до оценки в журнале', async ({ 
   await open(page, '/classes');
   const target = await freeClass(page);
 
-  await page.getByRole('button', { name: 'Создать класс' }).click();
+  await page.getByRole('button', { name: 'Создать класс' }).first().click();
   await page.getByLabel('Номер').selectOption(String(target.number));
   await page.getByLabel('Буква').selectOption(target.letter);
   await page.getByRole('button', { name: 'Создать', exact: true }).click();
@@ -57,7 +57,8 @@ test('путь от класса до оценки в журнале', async ({ 
 
   await page.getByRole('button', { name: 'Опубликовать' }).click();
   await expect(page).toHaveURL(/\/tests\/[a-z0-9]+$/);
-  await expect(page.getByText('Опубликован')).toBeVisible();
+  // Именно метка на карточке теста: рядом всплывает уведомление с похожим текстом.
+  await expect(page.getByText('Опубликован', { exact: true })).toBeVisible();
   await dismissToasts(page);
 
   // ─── Назначение классу на дату ───────────────────────────────────────────

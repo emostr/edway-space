@@ -12,7 +12,9 @@ FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 # tesseract распознаёт клетки бланка, tini обрабатывает сигналы остановки.
-RUN apk add --no-cache tini tesseract-ocr tesseract-ocr-data-rus
+# Языковые данные ставятся отдельными пакетами: русский нужен для букв,
+# английский — для цифр и кода бланка (в базовом пакете их нет).
+RUN apk add --no-cache tini tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-rus
 COPY package.json package-lock.json ./
 # prisma остаётся в prod-зависимостях: entrypoint накатывает миграции.
 RUN npm ci --omit=dev && npm cache clean --force

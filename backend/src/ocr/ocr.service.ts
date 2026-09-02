@@ -40,8 +40,13 @@ const ALLOWED: Record<Alphabet, RegExp> = {
 
 const CODE_WHITELIST = '0123456789ABCDEFGHJKMNPQRSTVWXYZ-/';
 
-/** Режим страницы 10 — «в кадре ровно один знак»: это и есть клетка бланка. */
-const CELL_PSM = 10;
+/**
+ * Режимы разбора клетки, в порядке применения. Сборки tesseract расходятся в
+ * том, какой из них справляется: на одной машине знак читает psm 10 («один
+ * знак»), на другой — только psm 13 («строка как есть»). Поэтому клетку,
+ * которую предыдущий режим не осилил, переспрашиваем следующим.
+ */
+const CELL_MODES = [10, 13, 8] as const;
 
 export interface RecognizedAnswer {
   questionId: string;
@@ -292,14 +297,10 @@ export class OcrService {
 
     const recognized = await Promise.all(
       groups.map((group) =>
-        recognizeBatch(
+        this.readCells(
           group.slots.map((slot) => slot.file),
           dir,
-          {
-            psm: CELL_PSM,
-            lang: LANG[group.alphabet],
-            whitelist: WHITELIST[group.alphabet] || undefined,
-          },
+          group.alphabet,
         ),
       ),
     );
@@ -310,12 +311,8 @@ export class OcrService {
       if (!state) {
         return;
       }
-      // От прочитанного берём первый подходящий знак: движок иногда дописывает
-      // к ответу мусор с краёв клетки.
-      const clean = [...(value ?? '').replace(/\s+/g, '')].find((char) =>
-        ALLOWED[slot.alphabet].test(char.toUpperCase()),
-      );
-      state.chars[slot.cellIndex] = clean ? clean.toUpperCase() : '';
+      const clean = pickChar(value, slot.alphabet);
+      state.chars[slot.cellIndex] = clean;
       const score = confidence.get(slot.questionId) ?? { read: 0, total: 0 };
       score.total += 1;
       if (clean) {
@@ -345,8 +342,59 @@ export class OcrService {
     });
   }
 
+  /**
+   * Читает пачку клеток каскадом режимов: каждый следующий получает только те
+   * клетки, в которых предыдущий не увидел ни одного допустимого знака. На
+   * чистом скане хватает первого прохода, поэтому цена каскада — почти ноль.
+   */
+  private async readCells(files: string[], dir: string, alphabet: Alphabet): Promise<string[]> {
+    const result = new Array<string>(files.length).fill('');
+    let pending = files.map((_, index) => index);
+
+    for (const psm of CELL_MODES) {
+      if (!pending.length) {
+        break;
+      }
+      const texts = await recognizeBatch(
+        pending.map((index) => files[index]),
+        dir,
+        {
+          psm,
+          lang: LANG[alphabet],
+          // Ограничение алфавита помогает только первому проходу и только
+          // цифрам: с кириллицей оно заставляет движок молчать.
+          whitelist: psm === CELL_MODES[0] ? WHITELIST[alphabet] || undefined : undefined,
+        },
+      );
+
+      const next: number[] = [];
+      pending.forEach((index, order) => {
+        const char = pickChar(texts[order] ?? '', alphabet);
+        if (char) {
+          result[index] = char;
+        } else {
+          next.push(index);
+        }
+      });
+      pending = next;
+    }
+
+    return result;
+  }
+
   /** Подсказка для журнала: какие задания OCR трогать не станет. */
   manualOnly(questions: SnapshotQuestion[]): string[] {
     return questions.filter((q) => q.type === 'EXTENDED').map((q) => q.id);
   }
+}
+
+/**
+ * Из прочитанного берёт первый допустимый знак: движок нередко дописывает к
+ * ответу мусор, подхваченный с краёв клетки.
+ */
+function pickChar(value: string, alphabet: Alphabet): string {
+  const found = [...(value ?? '').replace(/\s+/g, '')]
+    .map((char) => char.toUpperCase())
+    .find((char) => ALLOWED[alphabet].test(char));
+  return found ?? '';
 }
