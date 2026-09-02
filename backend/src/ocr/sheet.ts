@@ -177,23 +177,25 @@ export function buildSheetLayout(snapshot: TestSnapshot, variant = 1): SheetLayo
   }
 
   // Листы под развёрнутые ответы: у них те же угловые метки и тот же код,
-  // поэтому отсканированный оборот сам находит свою работу.
+  // поэтому отсканированный лист сам находит свою работу.
   let essayPage: SheetPage | null = null;
   let essayY = SHEET.extendedTop;
+
+  const closeEssayPage = () => {
+    if (!essayPage) {
+      return;
+    }
+    stretchEssayBlocks(essayPage.blocks);
+    pages.push(essayPage);
+    essayPage = null;
+  };
 
   for (const question of essays) {
     const height = essayHeight(question.points);
     if (!essayPage || essayY + height > SHEET.lastRowY) {
-      if (essayPage) {
-        pages.push(essayPage);
-      }
+      closeEssayPage();
       essayPage = { index: pages.length, kind: 'essay', header: false, rows: [], blocks: [] };
       essayY = SHEET.extendedTop;
-    }
-
-    const rules: number[] = [];
-    for (let line = essayY + 14; line < essayY + height - 4; line += SHEET.ruleStep) {
-      rules.push(line);
     }
 
     essayPage.blocks.push({
@@ -203,14 +205,39 @@ export function buildSheetLayout(snapshot: TestSnapshot, variant = 1): SheetLayo
       guideline: String(question.answerKey?.guideline ?? ''),
       y: essayY,
       height,
-      rules,
+      rules: [],
     });
     essayY += height + 6;
   }
 
-  if (essayPage) {
-    pages.push(essayPage);
-  }
+  closeEssayPage();
 
   return { pages, extended, variant, sheet: SHEET };
+}
+
+/**
+ * Свободное место на листе делится между блоками пропорционально их весу:
+ * пустой низ страницы ученику не нужен, а лишние две строки под ответ —
+ * очень даже. Линейки рисуются уже по итоговой высоте.
+ */
+function stretchEssayBlocks(blocks: EssayBlock[]): void {
+  if (!blocks.length) {
+    return;
+  }
+
+  const used = blocks.reduce((sum, block) => sum + block.height, 0) + (blocks.length - 1) * 6;
+  const free = SHEET.lastRowY - SHEET.extendedTop - used;
+  const totalPoints = blocks.reduce((sum, block) => sum + block.points, 0) || blocks.length;
+
+  let y = SHEET.extendedTop;
+  for (const block of blocks) {
+    const share = free > 0 ? (free * block.points) / totalPoints : 0;
+    block.y = y;
+    block.height += share;
+    block.rules = [];
+    for (let line = block.y + 14; line < block.y + block.height - 4; line += SHEET.ruleStep) {
+      block.rules.push(Number(line.toFixed(2)));
+    }
+    y += block.height + 6;
+  }
 }
