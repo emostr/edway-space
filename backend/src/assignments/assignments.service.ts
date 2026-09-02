@@ -71,8 +71,11 @@ export class AssignmentsService {
     works: { select: { status: true } },
   } satisfies Prisma.AssignmentInclude;
 
-  async list(filters: { classId?: string; testId?: string; from?: string; to?: string }) {
+  async list(teacherId: string, filters: { classId?: string; testId?: string; from?: string; to?: string }) {
     const where: Prisma.AssignmentWhereInput = {
+      // Работы класса — личное дело того, кто проводил: чужие назначения
+      // в списке не появляются, даже если тест общий.
+      createdById: teacherId,
       ...(filters.classId ? { classId: filters.classId } : {}),
       ...(filters.testId ? { testId: filters.testId } : {}),
       ...(filters.from || filters.to
@@ -167,9 +170,9 @@ export class AssignmentsService {
     return this.toRow(assignment);
   }
 
-  async detail(id: string) {
-    const assignment = await this.prisma.assignment.findUnique({
-      where: { id },
+  async detail(id: string, teacherId: string) {
+    const assignment = await this.prisma.assignment.findFirst({
+      where: { id, createdById: teacherId },
       include: {
         ...this.include,
         works: {
@@ -218,9 +221,9 @@ export class AssignmentsService {
   }
 
   /** Разметка бланков для печати: одна и та же геометрия у принтера и у OCR. */
-  async sheets(id: string) {
-    const assignment = await this.prisma.assignment.findUnique({
-      where: { id },
+  async sheets(id: string, teacherId: string) {
+    const assignment = await this.prisma.assignment.findFirst({
+      where: { id, createdById: teacherId },
       include: {
         test: { select: { title: true } },
         class: { select: { number: true, letter: true } },
@@ -251,11 +254,8 @@ export class AssignmentsService {
     };
   }
 
-  async update(id: string, data: { date?: string; note?: string }) {
-    const assignment = await this.prisma.assignment.findUnique({ where: { id } });
-    if (!assignment) {
-      throw new NotFoundException('Назначение не найдено');
-    }
+  async update(id: string, teacherId: string, data: { date?: string; note?: string }) {
+    await this.mine(id, teacherId);
     const updated = await this.prisma.assignment.update({
       where: { id },
       data: {
@@ -268,11 +268,8 @@ export class AssignmentsService {
   }
 
   /** Добавить бланк: пришёл новенький или лист испортили. */
-  async addSpare(id: string, studentId?: string) {
-    const assignment = await this.prisma.assignment.findUnique({ where: { id } });
-    if (!assignment) {
-      throw new NotFoundException('Назначение не найдено');
-    }
+  async addSpare(id: string, teacherId: string, studentId?: string) {
+    const assignment = await this.mine(id, teacherId);
     const snapshot = assignment.snapshot as unknown as TestSnapshot;
     const student = studentId
       ? await this.prisma.student.findUnique({ where: { id: studentId } })
@@ -290,7 +287,8 @@ export class AssignmentsService {
     return { id: work.id, code: work.code };
   }
 
-  async setClosed(id: string, closed: boolean) {
+  async setClosed(id: string, teacherId: string, closed: boolean) {
+    await this.mine(id, teacherId);
     const assignment = await this.prisma.assignment.update({
       where: { id },
       data: { closedAt: closed ? new Date() : null },
@@ -299,8 +297,18 @@ export class AssignmentsService {
     return this.toRow(assignment);
   }
 
-  async remove(id: string) {
+  async remove(id: string, teacherId: string) {
+    await this.mine(id, teacherId);
     await this.prisma.assignment.delete({ where: { id } });
     return { ok: true };
+  }
+
+  /** Назначение существует и принадлежит этому учителю. */
+  private async mine(id: string, teacherId: string) {
+    const assignment = await this.prisma.assignment.findFirst({ where: { id, createdById: teacherId } });
+    if (!assignment) {
+      throw new NotFoundException('Назначение не найдено');
+    }
+    return assignment;
   }
 }

@@ -11,7 +11,11 @@ export class WorksController {
 
   /** Пачка сканов одного назначения: листы сами разбираются по ученикам. */
   @Post('assignments/:id/scans')
-  async upload(@Param('id') id: string, @Req() req: FastifyRequest) {
+  async upload(
+    @Param('id') id: string,
+    @CurrentTeacher() teacher: RequestTeacher,
+    @Req() req: FastifyRequest,
+  ) {
     const parts = req.files();
     const files: { buffer: Buffer; mimetype: string }[] = [];
     for await (const part of parts) {
@@ -20,17 +24,21 @@ export class WorksController {
     if (!files.length) {
       throw new BadRequestException('Не передано ни одного файла');
     }
-    return this.works.upload(id, files);
+    return this.works.upload(id, teacher.id, files);
   }
 
   @Get('works/:id')
-  detail(@Param('id') id: string) {
-    return this.works.detail(id);
+  detail(@Param('id') id: string, @CurrentTeacher() teacher: RequestTeacher) {
+    return this.works.detail(id, teacher.id);
   }
 
   @Patch('works/:id/answers')
-  updateAnswer(@Param('id') id: string, @Body() dto: UpdateAnswerDto) {
-    return this.works.updateAnswer(id, dto);
+  updateAnswer(
+    @Param('id') id: string,
+    @CurrentTeacher() teacher: RequestTeacher,
+    @Body() dto: UpdateAnswerDto,
+  ) {
+    return this.works.updateAnswer(id, teacher.id, dto);
   }
 
   @Post('works/:id/finalize')
@@ -39,27 +47,39 @@ export class WorksController {
   }
 
   @Post('works/:id/reopen')
-  reopen(@Param('id') id: string) {
-    return this.works.reopen(id);
+  reopen(@Param('id') id: string, @CurrentTeacher() teacher: RequestTeacher) {
+    return this.works.reopen(id, teacher.id);
   }
 
   @Patch('works/:id/student')
-  assignStudent(@Param('id') id: string, @Body() dto: AssignStudentDto) {
-    return this.works.assignStudent(id, dto.studentId, dto.studentName);
+  assignStudent(
+    @Param('id') id: string,
+    @CurrentTeacher() teacher: RequestTeacher,
+    @Body() dto: AssignStudentDto,
+  ) {
+    return this.works.assignStudent(id, teacher.id, dto.studentId, dto.studentName);
   }
 
   @Post('works/:id/pages')
-  attach(@Param('id') id: string, @Body() dto: AttachPageDto) {
-    return this.works.attachExisting(id, dto.file, dto.pageIndex ?? 0);
+  attach(
+    @Param('id') id: string,
+    @CurrentTeacher() teacher: RequestTeacher,
+    @Body() dto: AttachPageDto,
+  ) {
+    return this.works.attachExisting(id, teacher.id, dto.file, dto.pageIndex ?? 0);
   }
 
   @Delete('works/:id/pages/:pageId')
-  removePage(@Param('id') id: string, @Param('pageId') pageId: string) {
-    return this.works.removePage(id, pageId);
+  removePage(
+    @Param('id') id: string,
+    @Param('pageId') pageId: string,
+    @CurrentTeacher() teacher: RequestTeacher,
+  ) {
+    return this.works.removePage(id, teacher.id, pageId);
   }
 
   @Post('works/:id/reset')
-  reset(@Param('id') id: string) {
-    return this.works.reset(id);
+  reset(@Param('id') id: string, @CurrentTeacher() teacher: RequestTeacher) {
+    return this.works.reset(id, teacher.id);
   }
 }

@@ -11,3 +11,4 @@ uploads/
 backend/src/generated/
 test-results/
 playwright-report/
+screenshots/

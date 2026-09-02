@@ -381,6 +381,25 @@
   font-size: 0.9rem !important;
 }
 
+/* ─── Поле даты ─────────────────────────────────────────────────────────── */
+/*
+  Нативная иконка календаря в WebKit рисуется поверх нашей кнопки — получалось
+  две иконки подряд. Прячем нативную, но оставляем её кликабельной областью.
+*/
+
+.ng-date::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  width: 2.5rem;
+  height: 100%;
+  cursor: pointer;
+}
+
+.ng-date::-webkit-datetime-edit {
+  padding: 0;
+}
+
 /* ─── Формулы KaTeX в тексте заданий ────────────────────────────────────── */
 
 .ng-formula {

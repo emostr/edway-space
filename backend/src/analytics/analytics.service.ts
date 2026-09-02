@@ -17,13 +17,14 @@ export class AnalyticsService {
         where: { deletedAt: null, OR: [{ ownerId: teacherId }, { shares: { some: { teacherId } } }] },
       }),
       this.prisma.schoolClass.count({ where: { archivedAt: null } }),
-      this.prisma.assignment.count(),
-      this.prisma.work.count(),
+      this.prisma.assignment.count({ where: { createdById: teacherId } }),
+      this.prisma.work.count({ where: { assignment: { createdById: teacherId } } }),
       this.prisma.work.findMany({
-        where: { status: 'CHECKED' },
+        where: { status: 'CHECKED', assignment: { createdById: teacherId } },
         select: { grade: true, percent: true, checkedAt: true },
       }),
       this.prisma.assignment.findMany({
+        where: { createdById: teacherId },
         orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
         take: 8,
         include: {
@@ -58,7 +59,10 @@ export class AnalyticsService {
     }
 
     const pendingWorks = await this.prisma.work.count({
-      where: { status: { in: ['RECOGNIZED', 'NEEDS_REVIEW'] } },
+      where: {
+        status: { in: ['RECOGNIZED', 'NEEDS_REVIEW'] },
+        assignment: { createdById: teacherId },
+      },
     });
 
     return {
@@ -87,9 +91,9 @@ export class AnalyticsService {
   }
 
   /** Разбор одного назначения: по заданиям видно, что класс не понял. */
-  async assignmentReport(assignmentId: string) {
-    const assignment = await this.prisma.assignment.findUnique({
-      where: { id: assignmentId },
+  async assignmentReport(assignmentId: string, teacherId: string) {
+    const assignment = await this.prisma.assignment.findFirst({
+      where: { id: assignmentId, createdById: teacherId },
       include: {
         test: { select: { title: true } },
         class: { select: { number: true, letter: true } },

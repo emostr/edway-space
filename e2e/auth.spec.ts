@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { PASSWORD, dismissToasts, fillField, login, open, register } from './helpers';
+import { PASSWORD, dismissToasts, fillField, freeClass, login, open, register, stamp } from './helpers';
 
 test.describe('Вход и регистрация', () => {
   test('учитель регистрируется, получает логин и попадает в кабинет', async ({ page }) => {
@@ -39,5 +39,63 @@ test.describe('Вход и регистрация', () => {
 
     await expect(page.getByText('Неверный логин или пароль')).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
+  });
+});
+
+test.describe('Разграничение доступа', () => {
+  test('чужие назначения, работы и оценки другому учителю не видны', async ({ page, browser }) => {
+    // Первый учитель проводит работу.
+    await register(page);
+    await dismissToasts(page);
+
+    const target = await freeClass(page);
+    const classResponse = await page.request.post('/api/classes', {
+      data: { number: target.number, letter: target.letter },
+    });
+    const classId = (await classResponse.json()).id as string;
+    await page.request.post(`/api/classes/${classId}/students`, {
+      data: { students: [{ lastName: 'Тайнов', firstName: 'Семён' }] },
+    });
+
+    const testResponse = await page.request.post('/api/tests', {
+      data: {
+        title: `Закрытая работа ${stamp()}`,
+        questions: [
+          {
+            type: 'SHORT_ANSWER',
+            content: '<p>Вопрос</p>',
+            points: 1,
+            options: [],
+            answerKey: { accepted: ['ответ'] },
+          },
+        ],
+      },
+    });
+    const testId = (await testResponse.json()).id as string;
+    await page.request.post(`/api/tests/${testId}/publish`);
+
+    const assignmentResponse = await page.request.post('/api/assignments', {
+      data: { testId, classId, date: '2026-10-01', spare: 0 },
+    });
+    const assignmentId = (await assignmentResponse.json()).id as string;
+    const detail = await (await page.request.get(`/api/assignments/${assignmentId}`)).json();
+    const workId = detail.works[0].id as string;
+
+    // Второй учитель заходит со своей сессией.
+    const other = await browser.newContext();
+    const otherPage = await other.newPage();
+    await register(otherPage);
+    await dismissToasts(otherPage);
+
+    const list = await (await otherPage.request.get('/api/assignments')).json();
+    expect(list.some((row: { id: string }) => row.id === assignmentId)).toBe(false);
+
+    expect((await otherPage.request.get(`/api/assignments/${assignmentId}`)).status()).toBe(404);
+    expect((await otherPage.request.get(`/api/works/${workId}`)).status()).toBe(404);
+
+    const journal = await (await otherPage.request.get('/api/grades')).json();
+    expect(journal.some((row: { assignmentId: string }) => row.assignmentId === assignmentId)).toBe(false);
+
+    await other.close();
   });
 });

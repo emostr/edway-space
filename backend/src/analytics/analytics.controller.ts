@@ -13,7 +13,7 @@ export class AnalyticsController {
   }
 
   @Get('assignments/:id')
-  assignment(@Param('id') id: string) {
-    return this.analytics.assignmentReport(id);
+  assignment(@Param('id') id: string, @CurrentTeacher() teacher: RequestTeacher) {
+    return this.analytics.assignmentReport(id, teacher.id);
   }
 }

@@ -10,12 +10,13 @@ export class AssignmentsController {
 
   @Get()
   list(
+    @CurrentTeacher() teacher: RequestTeacher,
     @Query('classId') classId?: string,
     @Query('testId') testId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.assignments.list({ classId, testId, from, to });
+    return this.assignments.list(teacher.id, { classId, testId, from, to });
   }
 
   @Post()
@@ -24,37 +25,45 @@ export class AssignmentsController {
   }
 
   @Get(':id')
-  detail(@Param('id') id: string) {
-    return this.assignments.detail(id);
+  detail(@Param('id') id: string, @CurrentTeacher() teacher: RequestTeacher) {
+    return this.assignments.detail(id, teacher.id);
   }
 
   @Get(':id/sheets')
-  sheets(@Param('id') id: string) {
-    return this.assignments.sheets(id);
+  sheets(@Param('id') id: string, @CurrentTeacher() teacher: RequestTeacher) {
+    return this.assignments.sheets(id, teacher.id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateAssignmentDto) {
-    return this.assignments.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @CurrentTeacher() teacher: RequestTeacher,
+    @Body() dto: UpdateAssignmentDto,
+  ) {
+    return this.assignments.update(id, teacher.id, dto);
   }
 
   @Post(':id/works')
-  addSpare(@Param('id') id: string, @Body('studentId') studentId?: string) {
-    return this.assignments.addSpare(id, studentId);
+  addSpare(
+    @Param('id') id: string,
+    @CurrentTeacher() teacher: RequestTeacher,
+    @Body('studentId') studentId?: string,
+  ) {
+    return this.assignments.addSpare(id, teacher.id, studentId);
   }
 
   @Post(':id/close')
-  close(@Param('id') id: string) {
-    return this.assignments.setClosed(id, true);
+  close(@Param('id') id: string, @CurrentTeacher() teacher: RequestTeacher) {
+    return this.assignments.setClosed(id, teacher.id, true);
   }
 
   @Post(':id/reopen')
-  reopen(@Param('id') id: string) {
-    return this.assignments.setClosed(id, false);
+  reopen(@Param('id') id: string, @CurrentTeacher() teacher: RequestTeacher) {
+    return this.assignments.setClosed(id, teacher.id, false);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.assignments.remove(id);
+  remove(@Param('id') id: string, @CurrentTeacher() teacher: RequestTeacher) {
+    return this.assignments.remove(id, teacher.id);
   }
 }

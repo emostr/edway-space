@@ -34,11 +34,14 @@ export interface GradeRow {
 export class GradesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private where(filters: GradeFilters): Prisma.WorkWhereInput {
+  private where(teacherId: string, filters: GradeFilters): Prisma.WorkWhereInput {
     return {
       ...(filters.onlyChecked === false ? {} : { status: 'CHECKED' }),
       ...(filters.assignmentId ? { assignmentId: filters.assignmentId } : {}),
       assignment: {
+        // Журнал у каждого учителя свой: он ведёт оценки только по тем
+        // работам, которые сам и проводил.
+        createdById: teacherId,
         ...(filters.classId ? { classId: filters.classId } : {}),
         ...(filters.testId ? { testId: filters.testId } : {}),
         ...(filters.from || filters.to
@@ -57,9 +60,9 @@ export class GradesService {
    * Журнал: все проверенные работы с сортировкой «дата → класс → тест».
    * Именно в таком порядке учитель ищет оценки за конкретную контрольную.
    */
-  async journal(filters: GradeFilters): Promise<GradeRow[]> {
+  async journal(teacherId: string, filters: GradeFilters): Promise<GradeRow[]> {
     const rows = await this.prisma.work.findMany({
-      where: this.where(filters),
+      where: this.where(teacherId, filters),
       orderBy: [
         { assignment: { date: 'desc' } },
         { assignment: { class: { number: 'asc' } } },
@@ -99,8 +102,8 @@ export class GradesService {
   }
 
   /** Сводка по выборке: сколько каких оценок и средний балл. */
-  async summary(filters: GradeFilters) {
-    const rows = await this.journal(filters);
+  async summary(teacherId: string, filters: GradeFilters) {
+    const rows = await this.journal(teacherId, filters);
     const distribution = { 5: 0, 4: 0, 3: 0, 2: 0 } as Record<number, number>;
     for (const row of rows) {
       if (row.grade) {
@@ -126,8 +129,8 @@ export class GradesService {
   }
 
   /** Выгрузка в CSV — для классного руководителя и для завуча. */
-  async csv(filters: GradeFilters): Promise<string> {
-    const rows = await this.journal(filters);
+  async csv(teacherId: string, filters: GradeFilters): Promise<string> {
+    const rows = await this.journal(teacherId, filters);
     const header = ['Дата', 'Класс', 'Тест', 'Ученик', 'Баллы', 'Максимум', 'Процент', 'Оценка'];
     const lines = rows.map((row) =>
       [
