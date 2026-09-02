@@ -572,9 +572,8 @@ summary() {
 	printf '  Секреты:          %s (права 600)\n' "$ENV_FILE"
 	printf '  Конфиг Caddy:     %s\n' "$CADDY_SITE_FILE"
 	printf '  Резервные копии:  %s\n\n' "$BACKUP_DIR"
-	printf '  Вход администратора:  %s / %s\n' "${admin_login:-admin}" "${admin_pass:-см. .env}"
-	printf '  При первом входе платформа потребует сменить пароль.\n'
-	printf '  Психологов администратор заводит сам — в разделе «Психологи».\n\n'
+	printf '  Регистрация свободная: учитель заводит кабинет сам на странице /register,\n'
+	printf '  логин платформа собирает транслитом и показывает сразу после регистрации.\n\n'
 	printf '  Логи приложения:  cd %s && docker compose logs -f\n' "$APP_DIR"
 	printf '  Логи Caddy:       journalctl -u caddy -f\n'
 	printf '  Обновление:       sudo %s/deploy.sh\n\n' "$APP_DIR"

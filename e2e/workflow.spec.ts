@@ -108,6 +108,12 @@ test('путь от класса до оценки в журнале', async ({ 
   await dismissToasts(page);
   await expect(page.getByText('оценка 5')).toBeVisible();
 
+  // ─── Разбор заданий по классу ────────────────────────────────────────────
+  await page.goto(assignmentUrl);
+  await page.waitForFunction(() => document.documentElement.dataset.hydrated === 'true');
+  await expect(page.getByText('Разбор заданий')).toBeVisible();
+  await expect(page.getByText('По 1 проверенным работам', { exact: false })).toBeVisible();
+
   // ─── Журнал ──────────────────────────────────────────────────────────────
   await open(page, '/grades');
   // В журнале лежат работы всех прогонов — ищем строку именно этой контрольной.

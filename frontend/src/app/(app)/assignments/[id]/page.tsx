@@ -20,7 +20,7 @@ import { api, errorMessage } from '@/lib/api';
 import { notify } from '@/lib/notify';
 import { formatDate } from '@/lib/format';
 import { GRADE_TONES, WORK_STATUS_LABELS, WORK_STATUS_TONES } from '@/lib/catalog';
-import type { AssignmentDetail, UploadOutcome } from '@/lib/types';
+import type { AssignmentDetail, AssignmentReport, UploadOutcome } from '@/lib/types';
 
 export default function AssignmentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -30,11 +30,18 @@ export default function AssignmentPage({ params }: { params: Promise<{ id: strin
   const [outcome, setOutcome] = useState<UploadOutcome | null>(null);
   const [attachTo, setAttachTo] = useState('');
   const [attachFile, setAttachFile] = useState<string | null>(null);
+  const [report, setReport] = useState<AssignmentReport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
-      setData(await api.get<AssignmentDetail>(`/assignments/${id}`));
+      const [detail, analysis] = await Promise.all([
+        api.get<AssignmentDetail>(`/assignments/${id}`),
+        // Разбор по заданиям считается только по проверенным работам.
+        api.get<AssignmentReport | null>(`/analytics/assignments/${id}`).catch(() => null),
+      ]);
+      setData(detail);
+      setReport(analysis);
     } catch (e) {
       notify.error('Не удалось открыть назначение', { text: errorMessage(e) });
     }
@@ -203,6 +210,51 @@ export default function AssignmentPage({ params }: { params: Promise<{ id: strin
             ))}
           </ul>
         </Alert>
+      ) : null}
+
+      {report && report.checked > 0 ? (
+        <Card
+          title="Разбор заданий"
+          subtitle={`По ${report.checked} проверенным работам — видно, что класс не понял`}
+          padding={false}
+          className="mb-6"
+        >
+          <Table
+            columns={[
+              { key: 'number', label: '№', width: '60px' },
+              { key: 'success', label: 'Справились', width: '220px' },
+              { key: 'answered', label: 'Ответили', align: 'right', hideOnMobile: true },
+              { key: 'average', label: 'Средний балл', align: 'right' },
+            ]}
+            rows={report.questions}
+            rowKey={(row) => row.questionId}
+            className="border-0"
+            row={(row) => (
+              <>
+                <td className="px-4 py-3 align-middle">
+                  <span className="w-7 h-7 bg-surface-3 text-ink text-xs font-extrabold flex items-center justify-center">
+                    {row.number}
+                  </span>
+                </td>
+                <td className="px-4 py-3 align-middle">
+                  <Progress
+                    value={row.successPercent}
+                    showValue
+                    variant={
+                      row.successPercent >= 70 ? 'success' : row.successPercent >= 40 ? 'warning' : 'danger'
+                    }
+                  />
+                </td>
+                <td className="px-4 py-3 align-middle text-right text-xs text-muted hidden md:table-cell">
+                  {row.correct} из {row.answered}
+                </td>
+                <td className="px-4 py-3 align-middle text-right text-sm tabular-nums text-ink">
+                  {row.averageScore} / {row.maxScore}
+                </td>
+              </>
+            )}
+          />
+        </Card>
       ) : null}
 
       {data.works.length ? (
