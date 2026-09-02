@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, use, useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Select } from '@/lib/ui';
 import { api, errorMessage } from '@/lib/api';
 import { notify } from '@/lib/notify';
@@ -9,7 +9,7 @@ import { formatDate } from '@/lib/format';
 import { QUESTION_TYPE_LABELS } from '@/lib/catalog';
 import type { SheetLayout, SheetsResponse, SnapshotQuestion } from '@/lib/types';
 
-type Mode = 'sheets' | 'questions' | 'both';
+type Mode = 'both' | 'questions' | 'sheets' | 'samples';
 
 export default function PrintPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -32,11 +32,21 @@ export default function PrintPage({ params }: { params: Promise<{ id: string }> 
     if (!data) {
       return 0;
     }
-    const sheets = data.works.reduce(
+    const blanks = data.works.reduce(
       (sum, work) => sum + (data.layouts[String(work.variant)]?.pages.length ?? 0),
       0,
     );
-    return (mode === 'questions' ? 0 : sheets) + (mode === 'sheets' ? 0 : data.variantCount);
+    if (mode === 'samples') {
+      return data.variantCount;
+    }
+    if (mode === 'questions') {
+      return data.works.length;
+    }
+    if (mode === 'sheets') {
+      return blanks;
+    }
+    // Комплект на ученика: лист с заданиями плюс его бланки.
+    return blanks + data.works.length;
   }, [data, mode]);
 
   if (!data) {
@@ -67,11 +77,12 @@ export default function PrintPage({ params }: { params: Promise<{ id: string }> 
             value={mode}
             onChange={(value) => setMode(value as Mode)}
             options={[
-              { value: 'both', label: 'Задания и бланки' },
+              { value: 'both', label: 'Комплект на ученика' },
               { value: 'questions', label: 'Только задания' },
               { value: 'sheets', label: 'Только бланки' },
+              { value: 'samples', label: 'Образцы заданий по вариантам' },
             ]}
-            className="w-56"
+            className="w-64"
           />
           <Button icon="printer" onClick={() => window.print()}>
             Печать
@@ -80,30 +91,47 @@ export default function PrintPage({ params }: { params: Promise<{ id: string }> 
         <div className="max-w-5xl mx-auto px-4 pb-3">
           <p className="text-xs text-faint">
             Печатайте в масштабе 100% без «вписать в страницу»: разметка бланка совпадает с сеткой,
-            по которой платформа режет скан. Углы с чёрными квадратами обрезать нельзя.
+            по которой платформа режет скан. Углы с чёрными квадратами обрезать нельзя. Комплекты
+            идут подряд — распечатанную пачку остаётся разложить по партам.
           </p>
         </div>
       </div>
 
       <div className="py-6 flex flex-col items-center gap-6">
-        {mode !== 'sheets'
+        {/* Образцы: по одному листу заданий на вариант — для себя и для завуча. */}
+        {mode === 'samples'
           ? variants.map((variant) => <QuestionSheet key={variant} data={data} variant={variant} />)
           : null}
-        {mode !== 'questions'
+
+        {/*
+          Остальные режимы идут комплектами: у каждого ученика сначала свои
+          задания, следом его бланк и лист под развёрнутый ответ. Пачку из
+          принтера остаётся просто разложить по партам.
+        */}
+        {mode !== 'samples'
           ? data.works.map((work) => {
               const layout = data.layouts[String(work.variant)];
               if (!layout) {
                 return null;
               }
-              return layout.pages.map((page) => (
-                <AnswerSheet
-                  key={`${work.id}-${page.index}`}
-                  data={data}
-                  layout={layout}
-                  work={work}
-                  pageIndex={page.index}
-                />
-              ));
+              return (
+                <Fragment key={work.id}>
+                  {mode !== 'sheets' ? (
+                    <QuestionSheet data={data} variant={work.variant} student={work.studentName} />
+                  ) : null}
+                  {mode !== 'questions'
+                    ? layout.pages.map((page) => (
+                        <AnswerSheet
+                          key={`${work.id}-${page.index}`}
+                          data={data}
+                          layout={layout}
+                          work={work}
+                          pageIndex={page.index}
+                        />
+                      ))
+                    : null}
+                </Fragment>
+              );
             })
           : null}
       </div>
@@ -112,7 +140,16 @@ export default function PrintPage({ params }: { params: Promise<{ id: string }> 
 }
 
 /** Лист с самими заданиями: тексты, формулы и картинки. */
-function QuestionSheet({ data, variant }: { data: SheetsResponse; variant: number }) {
+function QuestionSheet({
+  data,
+  variant,
+  student,
+}: {
+  data: SheetsResponse;
+  variant: number;
+  /** Имя ученика печатается, когда лист идёт в его комплекте. */
+  student?: string;
+}) {
   const questions: SnapshotQuestion[] =
     data.variantCount > 1
       ? data.snapshot.questions.filter((question) => !question.variant || question.variant === variant)
@@ -126,6 +163,9 @@ function QuestionSheet({ data, variant }: { data: SheetsResponse; variant: numbe
           {data.variantCount > 1 ? ` · вариант ${variant}` : ''}
         </div>
         <h1 style={{ fontSize: '16pt', fontWeight: 800, margin: '2mm 0 0' }}>{data.testTitle}</h1>
+        {student ? (
+          <div style={{ fontSize: '11pt', fontWeight: 700, marginTop: '2mm' }}>{student}</div>
+        ) : null}
         {data.instructions ? (
           <p style={{ fontSize: '9pt', marginTop: '3mm', lineHeight: 1.4 }}>{data.instructions}</p>
         ) : null}

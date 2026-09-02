@@ -81,8 +81,8 @@ test('путь от класса до оценки в журнале', async ({ 
   await page.getByRole('link', { name: 'Печать бланков' }).click();
   await expect(page).toHaveURL(/\/print\//);
   await expect(page.locator('.sheet-page').first()).toBeVisible();
-  // Лист заданий плюс на каждую из пяти работ: бланк и лист под развёрнутый ответ.
-  await expect(page.locator('.sheet-page')).toHaveCount(1 + 5 * 2);
+  // На каждую из пяти работ по комплекту: задания, бланк и лист под развёрнутый.
+  await expect(page.locator('.sheet-page')).toHaveCount(5 * 3);
   // Угловые метки — по четыре на бланк, по ним выравнивается скан.
   await expect(page.locator('.sheet-page').nth(1).locator('.sheet-marker')).toHaveCount(4);
 

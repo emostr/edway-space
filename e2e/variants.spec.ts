@@ -113,10 +113,24 @@ test('два варианта: у каждого свой бланк, свой �
   // ─── Печать: бланк, лист развёрнутого и по листу заданий на вариант ──────
   await open(page, `/print/${assignmentId}`);
   await expect(page.locator('.sheet-page').first()).toBeVisible();
-  // Два листа заданий и по две страницы на каждую из четырёх работ.
-  await expect(page.locator('.sheet-page')).toHaveCount(2 + 4 * 2);
+  // На каждую из четырёх работ по комплекту: задания, бланк и лист развёрнутых.
+  await expect(page.locator('.sheet-page')).toHaveCount(4 * 3);
   await expect(page.getByText('вариант 1').first()).toBeVisible();
   await expect(page.getByText('Задание 3 · 5 б.').first()).toBeVisible();
+
+  // Комплект собран на ученика: сначала его задания, следом его бланк и лист
+  // под развёрнутый ответ — пачку из принтера остаётся разложить по партам.
+  const firstKit = page.locator('.sheet-page').nth(0);
+  await expect(firstKit).toContainText(sheets.works[0].studentName);
+  await expect(firstKit).toContainText('2 + 2');
+  await expect(page.locator('.sheet-page').nth(1)).toContainText('БЛАНК ОТВЕТОВ');
+  await expect(page.locator('.sheet-page').nth(2)).toContainText('развёрнутые ответы');
+
+  // У соседа по списку вариант другой — и задания в его листе тоже.
+  const secondKit = page.locator('.sheet-page').nth(3);
+  await expect(secondKit).toContainText(sheets.works[1].studentName);
+  await expect(secondKit).toContainText('3 + 3');
+  await expect(secondKit).not.toContainText('2 + 2');
 
   // ─── Проверка идёт по ключам своего варианта ────────────────────────────
   const detail = await (await page.request.get(`/api/assignments/${assignmentId}`)).json();
@@ -152,7 +166,8 @@ test('два варианта: у каждого свой бланк, свой �
 
   await open(page, `/print/${assignmentId}`);
   await page.getByRole('combobox').selectOption('sheets');
-  // Бланки печатаются в порядке работ: у второй по счёту как раз вариант 2.
+  // Бланки печатаются в порядке работ, по две страницы на каждую:
+  // у второй работы (вариант 2) бланк идёт третьим листом.
   const sheet = page.locator('.sheet-page').nth(2);
   await expect(sheet).toBeVisible();
 
