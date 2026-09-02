@@ -30,6 +30,13 @@ export class QuestionInput {
   @IsIn(QUESTION_TYPES)
   type!: (typeof QUESTION_TYPES)[number];
 
+  /** 0 — задание во всех вариантах, 1..N — только в своём. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(8)
+  variant?: number;
+
   @IsString()
   @MaxLength(20000)
   content!: string;
@@ -52,6 +59,12 @@ export class SaveTestDto {
   @IsString()
   @Length(2, 200)
   title!: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(8)
+  variantCount?: number;
 
   @IsOptional()
   @IsString()

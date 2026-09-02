@@ -48,8 +48,19 @@ export class AssignmentsController {
     @Param('id') id: string,
     @CurrentTeacher() teacher: RequestTeacher,
     @Body('studentId') studentId?: string,
+    @Body('variant') variant?: number,
   ) {
-    return this.assignments.addSpare(id, teacher.id, studentId);
+    return this.assignments.addSpare(id, teacher.id, studentId, variant);
+  }
+
+  @Patch(':id/works/:workId/variant')
+  setVariant(
+    @Param('id') id: string,
+    @Param('workId') workId: string,
+    @CurrentTeacher() teacher: RequestTeacher,
+    @Body('variant') variant: number,
+  ) {
+    return this.assignments.setVariant(id, teacher.id, workId, variant);
   }
 
   @Post(':id/close')

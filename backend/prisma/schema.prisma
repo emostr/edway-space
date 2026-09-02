@@ -117,6 +117,9 @@ model Test {
   instructions String  @default("")
   // Пока тест не опубликован, назначить его классу нельзя.
   isPublished  Boolean @default(false)
+  // Сколько вариантов у работы. Ученики получают их по очереди,
+  // у каждого варианта свой бланк и свой ключ проверки.
+  variantCount Int     @default(1)
 
   ownerId   String
   owner     Teacher   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -140,6 +143,8 @@ model Question {
   testId String
   test   Test         @relation(fields: [testId], references: [id], onDelete: Cascade)
   order  Int
+  // 0 — задание идёт во все варианты, 1..N — только в свой.
+  variant Int         @default(0)
   type   QuestionType
   // Текст задания из визуального редактора: HTML с формулами KaTeX.
   // Формула лежит как <span data-formula="\frac{1}{2}"></span> — так она
@@ -157,6 +162,7 @@ model Question {
   answerKey Json @default("{}")
 
   @@index([testId, order])
+  @@index([testId, variant])
 }
 
 // Доступ к чужому тесту: владелец делится им с коллегой из списка.
@@ -228,6 +234,8 @@ model Work {
   studentName  String     @default("")
   // Код бланка: печатается в углу и читается при загрузке скана.
   code         String     @unique
+  // Какой вариант достался ученику. У теста без вариантов всегда 1.
+  variant      Int        @default(1)
   status       WorkStatus @default(PENDING)
 
   // Загруженные страницы скана.

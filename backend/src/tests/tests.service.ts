@@ -3,7 +3,7 @@ import { Prisma } from '../generated/prisma/client';
 import { QuestionType } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { htmlToText } from '../common/text';
-import { AnswerKey, OPTION_LETTERS, SnapshotQuestion, TestSnapshot, cellsFor } from './scoring';
+import { AnswerKey, OPTION_LETTERS, SnapshotQuestion, TestSnapshot, cellsFor, maxScoreFor } from './scoring';
 import { QuestionInput, SaveTestDto } from './dto/tests.dto';
 
 export interface TestSummary {
@@ -11,6 +11,7 @@ export interface TestSummary {
   title: string;
   description: string;
   isPublished: boolean;
+  variantCount: number;
   questionCount: number;
   maxScore: number;
   assignmentCount: number;
@@ -43,7 +44,7 @@ export class TestsService {
       orderBy: { updatedAt: 'desc' },
       include: {
         owner: { select: { id: true, fullName: true } },
-        questions: { select: { points: true } },
+        questions: { select: { points: true, variant: true } },
         shares: { select: { teacherId: true, canEdit: true } },
         _count: { select: { assignments: true } },
       },
@@ -56,8 +57,13 @@ export class TestsService {
         title: row.title,
         description: row.description,
         isPublished: row.isPublished,
+        variantCount: row.variantCount,
         questionCount: row.questions.length,
-        maxScore: row.questions.reduce((sum, q) => sum + q.points, 0),
+        // В списке показываем максимум первого варианта: у остальных он такой же,
+        // конструктор об этом предупреждает.
+        maxScore: row.questions
+          .filter((q) => !q.variant || q.variant === 1)
+          .reduce((sum, q) => sum + q.points, 0),
         assignmentCount: row._count.assignments,
         ownerId: row.ownerId,
         ownerName: row.owner.fullName,
@@ -97,6 +103,7 @@ export class TestsService {
       description: test.description,
       instructions: test.instructions,
       isPublished: test.isPublished,
+      variantCount: test.variantCount,
       gradeScale: (test.gradeScale ?? DEFAULT_SCALE) as Record<string, number>,
       ownerId: test.ownerId,
       ownerName: test.owner.fullName,
@@ -108,6 +115,7 @@ export class TestsService {
       questions: test.questions.map((q) => ({
         id: q.id,
         order: q.order,
+        variant: q.variant,
         type: q.type,
         content: q.content,
         points: q.points,
@@ -134,10 +142,30 @@ export class TestsService {
   }
 
   /** Ключи проверки приходят от клиента — сверяем их с вариантами. */
-  private validate(questions: QuestionInput[]): void {
+  private validate(questions: QuestionInput[], variantCount: number): void {
     if (!questions.length) {
       throw new BadRequestException('В тесте нет ни одного задания');
     }
+
+    if (variantCount > 1) {
+      // Пустой вариант — верный признак незаконченной работы: класс, которому
+      // он достанется, получит бланк без заданий.
+      const scores: number[] = [];
+      for (let variant = 1; variant <= variantCount; variant += 1) {
+        const own = questions.filter((q) => !q.variant || q.variant === variant);
+        if (!own.length) {
+          throw new BadRequestException(`В варианте ${variant} нет ни одного задания`);
+        }
+        scores.push(own.reduce((sum, q) => sum + q.points, 0));
+      }
+      // Шкала оценок одна на всех, поэтому и максимум должен совпадать.
+      if (new Set(scores).size > 1) {
+        throw new BadRequestException(
+          `Варианты стоят разного числа баллов (${scores.join(', ')}) — оценка вышла бы несправедливой`,
+        );
+      }
+    }
+
     questions.forEach((question, index) => {
       const number = index + 1;
       if (!htmlToText(question.content)) {
@@ -182,23 +210,27 @@ export class TestsService {
   }
 
   async create(teacherId: string, dto: SaveTestDto) {
-    this.validate(dto.questions);
+    const variantCount = dto.variantCount ?? 1;
+    this.validate(dto.questions, variantCount);
     const test = await this.prisma.test.create({
       data: {
         title: dto.title.trim(),
         description: (dto.description ?? '').trim(),
         instructions: (dto.instructions ?? '').trim(),
+        variantCount,
         gradeScale: (dto.gradeScale ?? DEFAULT_SCALE) as Prisma.InputJsonValue,
         ownerId: teacherId,
-        questions: { create: this.questionData(dto.questions) },
+        questions: { create: this.questionData(dto.questions, variantCount) },
       },
     });
     return this.detail(test.id, teacherId);
   }
 
-  private questionData(questions: QuestionInput[]) {
+  private questionData(questions: QuestionInput[], variantCount: number) {
     return questions.map((question, index) => ({
       order: index + 1,
+      // У теста без вариантов пометка не нужна: всё идёт всем.
+      variant: variantCount > 1 ? Math.min(question.variant ?? 0, variantCount) : 0,
       type: question.type as QuestionType,
       content: question.content,
       points: question.points,
@@ -213,7 +245,8 @@ export class TestsService {
    */
   async update(id: string, teacherId: string, dto: SaveTestDto) {
     await this.requireEditable(id, teacherId);
-    this.validate(dto.questions);
+    const variantCount = dto.variantCount ?? 1;
+    this.validate(dto.questions, variantCount);
 
     await this.prisma.$transaction([
       this.prisma.question.deleteMany({ where: { testId: id } }),
@@ -223,8 +256,9 @@ export class TestsService {
           title: dto.title.trim(),
           description: (dto.description ?? '').trim(),
           instructions: (dto.instructions ?? '').trim(),
+          variantCount,
           gradeScale: (dto.gradeScale ?? DEFAULT_SCALE) as Prisma.InputJsonValue,
-          questions: { create: this.questionData(dto.questions) },
+          questions: { create: this.questionData(dto.questions, variantCount) },
         },
       }),
     ]);
@@ -248,10 +282,12 @@ export class TestsService {
         description: source.description,
         instructions: source.instructions,
         gradeScale: source.gradeScale as Prisma.InputJsonValue,
+        variantCount: source.variantCount,
         ownerId: teacherId,
         questions: {
           create: source.questions.map((q) => ({
             order: q.order,
+            variant: q.variant,
             type: q.type,
             content: q.content,
             points: q.points,
@@ -326,6 +362,7 @@ export class TestsService {
       return {
         id: q.id,
         order: q.order,
+        variant: q.variant,
         type: q.type,
         content: q.content,
         points: q.points,
@@ -335,14 +372,17 @@ export class TestsService {
       };
     });
 
-    return {
+    const snapshot: TestSnapshot = {
       testId: test.id,
       title: test.title,
       description: test.description,
       instructions: test.instructions,
       gradeScale: (test.gradeScale ?? DEFAULT_SCALE) as Record<string, number>,
+      variantCount: test.variantCount,
       questions,
-      maxScore: questions.reduce((sum, q) => sum + q.points, 0),
+      maxScore: 0,
     };
+    snapshot.maxScore = maxScoreFor(snapshot, 1);
+    return snapshot;
   }
 }

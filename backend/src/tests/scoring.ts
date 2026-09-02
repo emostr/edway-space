@@ -10,6 +10,8 @@ export interface SnapshotOption {
 export interface SnapshotQuestion {
   id: string;
   order: number;
+  /** 0 — задание во всех вариантах, 1..N — только в своём. */
+  variant: number;
   type: QuestionType;
   content: string;
   points: number;
@@ -35,8 +37,23 @@ export interface TestSnapshot {
   description: string;
   instructions: string;
   gradeScale: Record<string, number>;
+  variantCount: number;
+  /** Задания всех вариантов сразу: набор конкретного варианта выбирается ниже. */
   questions: SnapshotQuestion[];
+  /** Максимум за первый вариант — для списков, где вариант ещё не известен. */
   maxScore: number;
+}
+
+/** Задания одного варианта: общие плюс помеченные этим номером. */
+export function questionsForVariant(snapshot: TestSnapshot, variant: number): SnapshotQuestion[] {
+  if ((snapshot.variantCount ?? 1) <= 1) {
+    return snapshot.questions;
+  }
+  return snapshot.questions.filter((question) => !question.variant || question.variant === variant);
+}
+
+export function maxScoreFor(snapshot: TestSnapshot, variant: number): number {
+  return questionsForVariant(snapshot, variant).reduce((sum, question) => sum + question.points, 0);
 }
 
 export const OPTION_LETTERS = 'АБВГДЕЖЗИК'.split('');

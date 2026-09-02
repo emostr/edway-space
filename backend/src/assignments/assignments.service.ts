@@ -3,7 +3,7 @@ import { Prisma } from '../generated/prisma/client';
 import { WorkStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { TestsService } from '../tests/tests.service';
-import { TestSnapshot } from '../tests/scoring';
+import { TestSnapshot, maxScoreFor } from '../tests/scoring';
 import { generateWorkCode } from '../common/crypto/codes';
 import { className } from '../common/text';
 import { buildSheetLayout } from '../ocr/sheet';
@@ -23,6 +23,7 @@ export interface AssignmentRow {
   checked: number;
   pending: number;
   maxScore: number;
+  variantCount: number;
 }
 
 @Injectable()
@@ -61,6 +62,7 @@ export class AssignmentsService {
       checked,
       pending: row.works.length - checked,
       maxScore: snapshot.maxScore ?? 0,
+      variantCount: snapshot.variantCount ?? 1,
     };
   }
 
@@ -139,6 +141,10 @@ export class AssignmentsService {
 
     const snapshot = await this.tests.snapshot(dto.testId);
     const spare = dto.spare ?? 2;
+    const variants = Math.max(1, snapshot.variantCount ?? 1);
+    // Варианты раздаются по списку класса подряд: соседи по парте получают
+    // разные, а печать идёт в том же порядке, в каком дети сидят в журнале.
+    const variantOf = (index: number) => (index % variants) + 1;
 
     const assignment = await this.prisma.assignment.create({
       data: {
@@ -150,16 +156,18 @@ export class AssignmentsService {
         snapshot: snapshot as unknown as Prisma.InputJsonValue,
         works: {
           create: [
-            ...schoolClass.students.map((student) => ({
+            ...schoolClass.students.map((student, index) => ({
               studentId: student.id,
               studentName: `${student.lastName} ${student.firstName}`,
               code: generateWorkCode(),
-              maxScore: snapshot.maxScore,
+              variant: variantOf(index),
+              maxScore: maxScoreFor(snapshot, variantOf(index)),
             })),
-            ...Array.from({ length: spare }, () => ({
+            ...Array.from({ length: spare }, (_, index) => ({
               studentName: '',
               code: generateWorkCode(),
-              maxScore: snapshot.maxScore,
+              variant: variantOf(schoolClass.students.length + index),
+              maxScore: maxScoreFor(snapshot, variantOf(schoolClass.students.length + index)),
             })),
           ],
         },
@@ -204,6 +212,7 @@ export class AssignmentsService {
         id: work.id,
         code: work.code,
         status: work.status,
+        variant: work.variant,
         studentId: work.studentId,
         studentName: work.student
           ? `${work.student.lastName} ${work.student.firstName}`
@@ -238,6 +247,13 @@ export class AssignmentsService {
     }
 
     const snapshot = assignment.snapshot as unknown as TestSnapshot;
+    const variantCount = Math.max(1, snapshot.variantCount ?? 1);
+    // Разметка у каждого варианта своя — печатать нужно ту, что досталась
+    // конкретному ученику.
+    const layouts = Object.fromEntries(
+      Array.from({ length: variantCount }, (_, index) => [index + 1, buildSheetLayout(snapshot, index + 1)]),
+    );
+
     return {
       assignmentId: assignment.id,
       testTitle: assignment.test.title,
@@ -245,10 +261,12 @@ export class AssignmentsService {
       date: assignment.date.toISOString().slice(0, 10),
       instructions: snapshot.instructions ?? '',
       snapshot,
-      layout: buildSheetLayout(snapshot),
+      variantCount,
+      layouts,
       works: assignment.works.map((work) => ({
         id: work.id,
         code: work.code,
+        variant: work.variant,
         studentName: work.student ? `${work.student.lastName} ${work.student.firstName}` : work.studentName,
       })),
     };
@@ -268,12 +286,16 @@ export class AssignmentsService {
   }
 
   /** Добавить бланк: пришёл новенький или лист испортили. */
-  async addSpare(id: string, teacherId: string, studentId?: string) {
+  async addSpare(id: string, teacherId: string, studentId?: string, variant?: number) {
     const assignment = await this.mine(id, teacherId);
     const snapshot = assignment.snapshot as unknown as TestSnapshot;
     const student = studentId
       ? await this.prisma.student.findUnique({ where: { id: studentId } })
       : null;
+
+    const variants = Math.max(1, snapshot.variantCount ?? 1);
+    const issued = await this.prisma.work.count({ where: { assignmentId: id } });
+    const chosen = Math.min(Math.max(variant ?? (issued % variants) + 1, 1), variants);
 
     const work = await this.prisma.work.create({
       data: {
@@ -281,10 +303,35 @@ export class AssignmentsService {
         studentId: student?.id,
         studentName: student ? `${student.lastName} ${student.firstName}` : '',
         code: generateWorkCode(),
-        maxScore: snapshot.maxScore ?? 0,
+        variant: chosen,
+        maxScore: maxScoreFor(snapshot, chosen),
       },
     });
-    return { id: work.id, code: work.code };
+    return { id: work.id, code: work.code, variant: chosen };
+  }
+
+  /** Сменить вариант у бланка: пригодится, если ученик сел не за свою парту. */
+  async setVariant(id: string, teacherId: string, workId: string, variant: number) {
+    const assignment = await this.mine(id, teacherId);
+    const snapshot = assignment.snapshot as unknown as TestSnapshot;
+    const variants = Math.max(1, snapshot.variantCount ?? 1);
+    if (variant < 1 || variant > variants) {
+      throw new BadRequestException(`У этой работы всего ${variants} вариант(а)`);
+    }
+
+    const work = await this.prisma.work.findFirst({ where: { id: workId, assignmentId: id } });
+    if (!work) {
+      throw new NotFoundException('Работа не найдена');
+    }
+    if (work.status !== 'PENDING') {
+      throw new BadRequestException('Работу уже проверяли — сначала сбросьте её');
+    }
+
+    await this.prisma.work.update({
+      where: { id: workId },
+      data: { variant, maxScore: maxScoreFor(snapshot, variant) },
+    });
+    return { ok: true };
   }
 
   async setClosed(id: string, teacherId: string, closed: boolean) {

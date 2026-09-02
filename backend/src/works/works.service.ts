@@ -6,7 +6,14 @@ import { StorageService } from '../storage/storage.service';
 import { OcrService, SheetNotAlignedError } from '../ocr/ocr.service';
 import { TesseractMissingError } from '../ocr/tesseract';
 import { buildSheetLayout } from '../ocr/sheet';
-import { SnapshotQuestion, TestSnapshot, gradeFor, judge } from '../tests/scoring';
+import {
+  SnapshotQuestion,
+  TestSnapshot,
+  gradeFor,
+  judge,
+  maxScoreFor,
+  questionsForVariant,
+} from '../tests/scoring';
 import { levenshtein } from '../common/text';
 import { normalizeCode } from '../common/crypto/codes';
 import { UpdateAnswerDto } from './dto/works.dto';
@@ -81,6 +88,11 @@ export class WorksService {
     return snapshot;
   }
 
+  /** Задания того варианта, который достался этой работе. */
+  private questionsOf(snapshot: TestSnapshot, variant: number): SnapshotQuestion[] {
+    return questionsForVariant(snapshot, variant);
+  }
+
   /** Ищет бланк по прочитанному коду, прощая одну-две ошибки распознавания. */
   private matchCode<T extends { code: string }>(works: T[], scanned: string): T | null {
     const normalized = normalizeCode(scanned);
@@ -120,14 +132,26 @@ export class WorksService {
   ): Promise<UploadOutcome> {
     const assignment = await this.prisma.assignment.findFirst({
       where: { id: assignmentId, createdById: teacherId },
-      include: { works: { select: { id: true, code: true, studentName: true } } },
+      include: { works: { select: { id: true, code: true, studentName: true, variant: true } } },
     });
     if (!assignment) {
       throw new NotFoundException('Назначение не найдено');
     }
 
     const snapshot = this.snapshotOf(assignment);
-    const layout = buildSheetLayout(snapshot);
+    // Разметка зависит от варианта, а вариант станет известен только после
+    // чтения кода. Читаем первым вариантом — клетки кода у всех в одном месте,
+    // а строки ответов перечитываем разметкой найденной работы.
+    const layouts = new Map<number, ReturnType<typeof buildSheetLayout>>();
+    const layoutFor = (variant: number) => {
+      const cached = layouts.get(variant);
+      if (cached) {
+        return cached;
+      }
+      const built = buildSheetLayout(snapshot, variant);
+      layouts.set(variant, built);
+      return built;
+    };
 
     const outcome: UploadOutcome = { matched: [], unmatched: [] };
     const touched = new Set<string>();
@@ -138,7 +162,7 @@ export class WorksService {
 
       let recognized;
       try {
-        recognized = await this.ocr.recognize(path, layout);
+        recognized = await this.ocr.recognize(path, layoutFor(1));
       } catch (error) {
         const reason =
           error instanceof SheetNotAlignedError || error instanceof TesseractMissingError
@@ -161,6 +185,15 @@ export class WorksService {
             : 'Не удалось прочитать код бланка',
         });
         continue;
+      }
+
+      // Вариант известен — если он не первый, перечитываем лист его разметкой.
+      if (work.variant !== 1) {
+        try {
+          recognized = await this.ocr.recognize(path, layoutFor(work.variant));
+        } catch {
+          // Лист прикрепим и так: ответы учитель впишет руками.
+        }
       }
 
       await this.attachPage(work.id, stored, recognized.pageIndex);
@@ -208,6 +241,7 @@ export class WorksService {
       include: { assignment: true },
     });
     const snapshot = this.snapshotOf(work.assignment);
+    const questions = this.questionsOf(snapshot, work.variant);
     const existing = (work.answers ?? []) as unknown as WorkAnswer[];
     const byQuestion = new Map(existing.map((a) => [a.questionId, a]));
 
@@ -217,14 +251,14 @@ export class WorksService {
       if (previous && !previous.auto) {
         continue;
       }
-      const question = snapshot.questions.find((q) => q.id === item.questionId);
+      const question = questions.find((q) => q.id === item.questionId);
       if (!question) {
         continue;
       }
       const verdict = judge(question, item.raw);
       byQuestion.set(item.questionId, {
         questionId: item.questionId,
-        number: snapshot.questions.findIndex((q) => q.id === item.questionId) + 1,
+        number: questions.findIndex((q) => q.id === item.questionId) + 1,
         type: question.type,
         raw: item.raw,
         correct: verdict.correct,
@@ -256,11 +290,11 @@ export class WorksService {
       include: { assignment: true },
     });
     const snapshot = this.snapshotOf(work.assignment);
-    const answers = this.fill(work.answers as unknown as WorkAnswer[], snapshot);
+    const answers = this.fill(work.answers as unknown as WorkAnswer[], snapshot, work.variant);
 
     const autoScore = answers.filter((a) => a.auto).reduce((sum, a) => sum + a.score, 0);
     const manualScore = answers.filter((a) => !a.auto).reduce((sum, a) => sum + a.score, 0);
-    const maxScore = snapshot.maxScore;
+    const maxScore = maxScoreFor(snapshot, work.variant);
     const total = autoScore + manualScore;
     const percent = maxScore ? Math.round((total / maxScore) * 100) : 0;
 
@@ -290,10 +324,10 @@ export class WorksService {
     });
   }
 
-  /** Достраивает пропущенные задания: в журнале строк столько же, сколько в тесте. */
-  private fill(answers: WorkAnswer[], snapshot: TestSnapshot): WorkAnswer[] {
+  /** Достраивает пропущенные задания: строк столько же, сколько в варианте. */
+  private fill(answers: WorkAnswer[], snapshot: TestSnapshot, variant: number): WorkAnswer[] {
     const byQuestion = new Map((answers ?? []).map((a) => [a.questionId, a]));
-    return snapshot.questions.map((question, index) => {
+    return this.questionsOf(snapshot, variant).map((question, index) => {
       const existing = byQuestion.get(question.id);
       if (existing) {
         return { ...existing, number: index + 1, maxScore: question.points, type: question.type };
@@ -316,12 +350,15 @@ export class WorksService {
   async detail(id: string, teacherId: string) {
     const work = await this.loadWork(id, teacherId);
     const snapshot = this.snapshotOf(work.assignment);
-    const answers = this.fill(work.answers as unknown as WorkAnswer[], snapshot);
+    const questions = this.questionsOf(snapshot, work.variant);
+    const answers = this.fill(work.answers as unknown as WorkAnswer[], snapshot, work.variant);
 
     return {
       id: work.id,
       code: work.code,
       status: work.status,
+      variant: work.variant,
+      variantCount: snapshot.variantCount ?? 1,
       studentId: work.studentId,
       studentName: work.student ? `${work.student.lastName} ${work.student.firstName}` : work.studentName,
       assignmentId: work.assignmentId,
@@ -343,7 +380,7 @@ export class WorksService {
         width: page.width,
         height: page.height,
       })),
-      questions: snapshot.questions.map((question, index) => ({
+      questions: questions.map((question, index) => ({
         id: question.id,
         number: index + 1,
         type: question.type,
@@ -360,12 +397,12 @@ export class WorksService {
   async updateAnswer(id: string, teacherId: string, dto: UpdateAnswerDto) {
     const work = await this.loadWork(id, teacherId);
     const snapshot = this.snapshotOf(work.assignment);
-    const question = snapshot.questions.find((q) => q.id === dto.questionId);
+    const question = this.questionsOf(snapshot, work.variant).find((q) => q.id === dto.questionId);
     if (!question) {
       throw new NotFoundException('Задание не найдено');
     }
 
-    const answers = this.fill(work.answers as unknown as WorkAnswer[], snapshot);
+    const answers = this.fill(work.answers as unknown as WorkAnswer[], snapshot, work.variant);
     const index = answers.findIndex((a) => a.questionId === dto.questionId);
     const current = answers[index];
 
@@ -409,7 +446,7 @@ export class WorksService {
   async finalize(id: string, teacherId: string) {
     const work = await this.loadWork(id, teacherId);
     const snapshot = this.snapshotOf(work.assignment);
-    const answers = this.fill(work.answers as unknown as WorkAnswer[], snapshot);
+    const answers = this.fill(work.answers as unknown as WorkAnswer[], snapshot, work.variant);
 
     const unresolved = answers.filter((a) => a.correct === null && a.score === 0 && a.type === 'EXTENDED');
     if (unresolved.length) {
@@ -419,7 +456,8 @@ export class WorksService {
     }
 
     const total = answers.reduce((sum, a) => sum + a.score, 0);
-    const percent = snapshot.maxScore ? Math.round((total / snapshot.maxScore) * 100) : 0;
+    const maxScore = maxScoreFor(snapshot, work.variant);
+    const percent = maxScore ? Math.round((total / maxScore) * 100) : 0;
 
     await this.prisma.work.update({
       where: { id },
@@ -472,7 +510,7 @@ export class WorksService {
       throw new NotFoundException('Файл скана не найден');
     }
     const snapshot = this.snapshotOf(work.assignment);
-    const layout = buildSheetLayout(snapshot);
+    const layout = buildSheetLayout(snapshot, work.variant);
 
     await this.attachPage(id, { file, width: 0, height: 0 }, pageIndex);
     try {

@@ -5,7 +5,7 @@
  *
  * Система координат: миллиметры от левого верхнего угла листа A4.
  */
-import { SnapshotQuestion, TestSnapshot } from '../tests/scoring';
+import { SnapshotQuestion, TestSnapshot, questionsForVariant } from '../tests/scoring';
 
 export const SHEET = {
   width: 210,
@@ -27,6 +27,9 @@ export const SHEET = {
   cellGap: 1.6,
   /** Окно с кодом работы: печатается моноширинно и читается первым. */
   code: { x: 132, y: 13.5, width: 56, height: 9 },
+  /** Разлиновка на листе для развёрнутых ответов. */
+  ruleStep: 9,
+  extendedTop: 30,
 } as const;
 
 export const MAX_CELLS = Math.floor(
@@ -59,18 +62,43 @@ export interface SheetRow {
   cells: CellBox[];
 }
 
+/** Место под развёрнутый ответ: заголовок задания и разлинованное поле. */
+export interface EssayBlock {
+  questionId: string;
+  number: number;
+  points: number;
+  /** Подсказка из ключа: что засчитывать. Печатается серым под номером. */
+  guideline: string;
+  y: number;
+  height: number;
+  /** Ординаты линеек внутри блока. */
+  rules: number[];
+}
+
 export interface SheetPage {
   index: number;
+  /** answers — клетки под ответы, essay — поле для развёрнутых. */
+  kind: 'answers' | 'essay';
   /** Шапка печатается только на первой странице. */
   header: boolean;
   rows: SheetRow[];
+  blocks: EssayBlock[];
 }
 
 export interface SheetLayout {
   pages: SheetPage[];
-  /** Задания, которые в бланк не попадают: их пишут на обороте. */
+  /** Задания, которые пишутся не в клетках, а на отдельных листах. */
   extended: { questionId: string; number: number; points: number }[];
+  variant: number;
   sheet: typeof SHEET;
+}
+
+/**
+ * Сколько места отвести развёрнутому ответу. Задание на пять баллов требует
+ * заметно больше места, чем на два, но целый лист под каждое — расточительство.
+ */
+function essayHeight(points: number): number {
+  return Math.min(200, Math.max(54, 36 + points * 12));
 }
 
 function alphabetFor(question: SnapshotQuestion): SheetRow['alphabet'] {
@@ -102,24 +130,31 @@ function rowCells(count: number, y: number): CellBox[] {
   }));
 }
 
-/** Раскладывает задания снимка по страницам бланка. */
-export function buildSheetLayout(snapshot: TestSnapshot): SheetLayout {
+/**
+ * Раскладывает задания одного варианта по страницам: сначала бланк с клетками,
+ * затем листы под развёрнутые ответы. Нумерация страниц сквозная — её же
+ * печатает код в углу, по ней скан и находит своё место.
+ */
+export function buildSheetLayout(snapshot: TestSnapshot, variant = 1): SheetLayout {
+  const questions = questionsForVariant(snapshot, variant);
   const pages: SheetPage[] = [];
   const extended: SheetLayout['extended'] = [];
+  const essays: SnapshotQuestion[] = [];
 
-  let page: SheetPage = { index: 0, header: true, rows: [] };
+  let page: SheetPage = { index: 0, kind: 'answers', header: true, rows: [], blocks: [] };
   let y: number = SHEET.firstRowY;
 
-  snapshot.questions.forEach((question, index) => {
+  questions.forEach((question, index) => {
     const number = index + 1;
     if (question.type === 'EXTENDED' || question.cells === 0) {
       extended.push({ questionId: question.id, number, points: question.points });
+      essays.push({ ...question, order: number });
       return;
     }
 
     if (y + SHEET.rowHeight > SHEET.lastRowY) {
       pages.push(page);
-      page = { index: pages.length, header: false, rows: [] };
+      page = { index: pages.length, kind: 'answers', header: false, rows: [], blocks: [] };
       y = SHEET.contRowY;
     }
 
@@ -141,5 +176,41 @@ export function buildSheetLayout(snapshot: TestSnapshot): SheetLayout {
     pages.push(page);
   }
 
-  return { pages, extended, sheet: SHEET };
+  // Листы под развёрнутые ответы: у них те же угловые метки и тот же код,
+  // поэтому отсканированный оборот сам находит свою работу.
+  let essayPage: SheetPage | null = null;
+  let essayY = SHEET.extendedTop;
+
+  for (const question of essays) {
+    const height = essayHeight(question.points);
+    if (!essayPage || essayY + height > SHEET.lastRowY) {
+      if (essayPage) {
+        pages.push(essayPage);
+      }
+      essayPage = { index: pages.length, kind: 'essay', header: false, rows: [], blocks: [] };
+      essayY = SHEET.extendedTop;
+    }
+
+    const rules: number[] = [];
+    for (let line = essayY + 14; line < essayY + height - 4; line += SHEET.ruleStep) {
+      rules.push(line);
+    }
+
+    essayPage.blocks.push({
+      questionId: question.id,
+      number: question.order,
+      points: question.points,
+      guideline: String(question.answerKey?.guideline ?? ''),
+      y: essayY,
+      height,
+      rules,
+    });
+    essayY += height + 6;
+  }
+
+  if (essayPage) {
+    pages.push(essayPage);
+  }
+
+  return { pages, extended, variant, sheet: SHEET };
 }
