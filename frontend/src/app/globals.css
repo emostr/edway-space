@@ -1,0 +1,528 @@
+@import 'tailwindcss';
+
+@font-face {
+  font-family: 'Open Sans';
+  font-style: italic;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('/fonts/open-sans-italic-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Open Sans';
+  font-style: italic;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('/fonts/open-sans-italic-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Open Sans';
+  font-style: italic;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('/fonts/open-sans-italic-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Open Sans';
+  font-style: italic;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('/fonts/open-sans-italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: 300 800;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('/fonts/open-sans-normal-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: 300 800;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('/fonts/open-sans-normal-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: 300 800;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('/fonts/open-sans-normal-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: 300 800;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('/fonts/open-sans-normal-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@theme inline {
+  --font-sans: 'Open Sans', system-ui, -apple-system, sans-serif;
+
+  --color-bg: var(--ng-bg);
+  --color-surface: var(--ng-surface);
+  --color-surface-2: var(--ng-surface-2);
+  --color-surface-3: var(--ng-surface-3);
+  --color-line: var(--ng-line);
+  --color-line-strong: var(--ng-line-strong);
+
+  --color-ink: var(--ng-ink);
+  --color-muted: var(--ng-muted);
+  --color-faint: var(--ng-faint);
+
+  --color-accent: var(--ng-accent);
+  --color-accent-strong: var(--ng-accent-strong);
+  --color-on-accent: var(--ng-on-accent);
+
+  --color-success: var(--ng-success);
+  --color-warning: var(--ng-warning);
+  --color-danger: var(--ng-danger);
+  --color-info: var(--ng-info);
+
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+}
+
+:root,
+[data-theme='dark'] {
+  --ng-bg: #0a0a0a;
+  --ng-surface: #141414;
+  --ng-surface-2: #1c1c1c;
+  --ng-surface-3: #262626;
+  --ng-line: #2a2a2a;
+  --ng-line-strong: #3a3a3a;
+
+  --ng-ink: #f5f5f5;
+  --ng-muted: #8a8a8a;
+  --ng-faint: #5a5a5a;
+
+  --ng-success: #16a06a;
+  --ng-warning: #d9920a;
+  --ng-danger: #e03e3e;
+  --ng-info: #2f86d4;
+
+  color-scheme: dark;
+}
+
+[data-theme='light'] {
+  --ng-bg: #eaeaea;
+  --ng-surface: #ffffff;
+  --ng-surface-2: #f4f4f4;
+  --ng-surface-3: #e6e6e6;
+  --ng-line: #d4d4d4;
+  --ng-line-strong: #bcbcbc;
+
+  --ng-ink: #141414;
+  --ng-muted: #5f5f5f;
+  --ng-faint: #9a9a9a;
+
+  --ng-success: #12855a;
+  --ng-warning: #b97b06;
+  --ng-danger: #c62f2f;
+  --ng-info: #1f6fbf;
+
+  color-scheme: light;
+}
+
+[data-accent='teal'] {
+  --ng-accent: #00b294;
+  --ng-accent-strong: #00967d;
+  --ng-on-accent: #04231d;
+}
+[data-accent='azure'] {
+  --ng-accent: #0078d4;
+  --ng-accent-strong: #005fab;
+  --ng-on-accent: #ffffff;
+}
+[data-accent='magenta'] {
+  --ng-accent: #e3008c;
+  --ng-accent-strong: #b80072;
+  --ng-on-accent: #ffffff;
+}
+[data-accent='amber'] {
+  --ng-accent: #e88c00;
+  --ng-accent-strong: #bd7100;
+  --ng-on-accent: #201400;
+}
+[data-accent='violet'] {
+  --ng-accent: #8764b8;
+  --ng-accent-strong: #6f4fa0;
+  --ng-on-accent: #ffffff;
+}
+[data-accent='lime'] {
+  --ng-accent: #7cbb00;
+  --ng-accent-strong: #669a00;
+  --ng-on-accent: #14200a;
+}
+
+@layer base {
+  * {
+    border-color: var(--ng-line);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: var(--ng-bg);
+    color: var(--ng-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--ng-accent);
+    color: var(--ng-on-accent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ng-accent);
+    outline-offset: 2px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ng-line-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--ng-line-strong);
+    border: 3px solid var(--ng-bg);
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--ng-accent);
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font-family: inherit;
+  }
+}
+
+@layer utilities {
+  .ng-label {
+    text-transform: uppercase;
+    letter-spacing: 0em;
+    font-weight: 700;
+    font-size: 0.6875rem;
+  }
+
+  .ng-enter {
+    animation: ng-enter 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .ng-tile-press {
+    transition:
+      transform 0.08s ease,
+      background 0.15s ease,
+      border-color 0.15s ease;
+  }
+  .ng-tile-press:active {
+    transform: scale(0.985);
+  }
+}
+
+@keyframes ng-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.swal2-container {
+  padding: 1rem;
+}
+
+/*
+  Пока уведомление уезжает, его контейнер ещё висит на весь экран. В WebKit он
+  успевает перехватить клики — интерфейс на секунду становится «мёртвым».
+  Закрывающемуся контейнеру события мыши не нужны.
+*/
+.swal2-container.swal2-backdrop-hide,
+.swal2-container.swal2-noanimation {
+  pointer-events: none;
+}
+.swal2-container.swal2-backdrop-hide .swal2-popup,
+.swal2-container.swal2-noanimation .swal2-popup {
+  pointer-events: auto;
+}
+
+.swal2-popup {
+  background: var(--ng-surface) !important;
+  color: var(--ng-ink) !important;
+  border: 1px solid var(--ng-line) !important;
+  border-left: 3px solid var(--ng-accent) !important;
+  border-radius: 0 !important;
+  font-family: var(--font-sans) !important;
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.55) !important;
+}
+
+.swal2-title {
+  color: var(--ng-ink) !important;
+  font-weight: 700 !important;
+  font-size: 1.15rem !important;
+  letter-spacing: -0.01em;
+}
+
+.swal2-html-container {
+  color: var(--ng-muted) !important;
+  font-size: 0.95rem !important;
+}
+
+.swal2-actions {
+  gap: 0.5rem;
+}
+
+.swal2-styled {
+  border-radius: 0 !important;
+  font-weight: 700 !important;
+  font-size: 0.85rem !important;
+  letter-spacing: 0em;
+  box-shadow: none !important;
+  transition: filter 0.15s ease;
+}
+.swal2-styled:focus {
+  box-shadow: none !important;
+  outline: 2px solid var(--ng-accent) !important;
+  outline-offset: 2px;
+}
+
+.swal2-styled.swal2-confirm {
+  background: var(--ng-accent) !important;
+  color: var(--ng-on-accent) !important;
+}
+.swal2-styled.swal2-confirm:hover {
+  filter: brightness(1.08);
+}
+
+.swal2-styled.swal2-cancel {
+  background: transparent !important;
+  color: var(--ng-ink) !important;
+  border: 1px solid var(--ng-line-strong) !important;
+}
+.swal2-styled.swal2-deny {
+  background: var(--ng-danger) !important;
+  color: #fff !important;
+}
+
+.swal2-input,
+.swal2-textarea {
+  background: var(--ng-surface-2) !important;
+  color: var(--ng-ink) !important;
+  border: 1px solid var(--ng-line) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.swal2-input:focus,
+.swal2-textarea:focus {
+  border-color: var(--ng-accent) !important;
+}
+.swal2-input-label {
+  color: var(--ng-muted) !important;
+}
+
+.swal2-timer-progress-bar {
+  background: var(--ng-accent) !important;
+}
+
+.swal2-close {
+  color: var(--ng-muted) !important;
+  border-radius: 0 !important;
+}
+.swal2-close:hover {
+  color: var(--ng-danger) !important;
+}
+
+.swal2-toast {
+  background: var(--ng-surface-2) !important;
+  border: 1px solid var(--ng-line) !important;
+  border-left: 3px solid var(--ng-accent) !important;
+  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.5) !important;
+}
+.swal2-toast .swal2-title {
+  font-size: 0.9rem !important;
+}
+
+/* ─── Формулы KaTeX в тексте заданий ────────────────────────────────────── */
+
+.ng-formula {
+  display: inline-block;
+  padding: 0 0.1em;
+}
+
+.ng-formula.is-empty::after {
+  content: 'формула';
+  color: var(--ng-faint);
+  font-size: 0.85em;
+}
+
+/* Выделенная в редакторе формула подсвечивается, как выделенный текст. */
+.ProseMirror .ng-formula.ProseMirror-selectednode {
+  outline: 2px solid var(--ng-accent);
+  outline-offset: 1px;
+}
+
+.ng-rich .katex,
+.ProseMirror .katex {
+  font-size: 1.05em;
+}
+
+.ng-rich img,
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--ng-line);
+}
+
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--ng-accent);
+}
+
+.ng-rich p,
+.ProseMirror p {
+  margin: 0 0 0.5em;
+}
+
+.ng-rich p:last-child,
+.ProseMirror p:last-child {
+  margin-bottom: 0;
+}
+
+.ng-rich ul,
+.ProseMirror ul {
+  list-style: disc;
+  padding-left: 1.4em;
+  margin: 0 0 0.5em;
+}
+
+.ng-rich ol,
+.ProseMirror ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+  margin: 0 0 0.5em;
+}
+
+.ProseMirror {
+  outline: none;
+  min-height: 6rem;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--ng-faint);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* ─── Печать бланков ответов ────────────────────────────────────────────── */
+/*
+  Лист печатается миллиметр в миллиметр по той же разметке, по которой потом
+  режется скан: любые поля принтера и масштабирование сбили бы распознавание.
+*/
+
+.sheet-page {
+  position: relative;
+  width: 210mm;
+  height: 297mm;
+  background: #fff;
+  color: #000;
+  overflow: hidden;
+  page-break-after: always;
+  break-after: page;
+}
+
+.sheet-page:last-child {
+  page-break-after: auto;
+  break-after: auto;
+}
+
+.sheet-marker {
+  position: absolute;
+  background: #000;
+}
+
+.sheet-cell {
+  position: absolute;
+  border: 0.35mm solid #000;
+  box-sizing: border-box;
+}
+
+.sheet-text {
+  position: absolute;
+  font-family: 'Open Sans', system-ui, sans-serif;
+  color: #000;
+}
+
+.sheet-code {
+  position: absolute;
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  .print-hide {
+    display: none !important;
+  }
+
+  .sheet-page {
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+}
