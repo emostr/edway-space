@@ -24,6 +24,7 @@ export default function EditTestPage({ params }: { params: Promise<{ id: string 
         description: data.description,
         instructions: data.instructions,
         gradeScale: data.gradeScale,
+        variantCount: data.variantCount,
         questions: data.questions,
       });
     } catch (e) {
@@ -51,8 +52,10 @@ export default function EditTestPage({ params }: { params: Promise<{ id: string 
         description: state.description,
         instructions: state.instructions,
         gradeScale: state.gradeScale,
+        variantCount: state.variantCount,
         questions: state.questions.map((question) => ({
           type: question.type,
+          variant: question.variant,
           content: question.content,
           points: question.points,
           options: question.options,

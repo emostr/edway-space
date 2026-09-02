@@ -88,6 +88,9 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
         </Badge>
         <Badge variant="accent">{maxScore} баллов</Badge>
         <Badge variant="neutral">{test.questions.length} заданий</Badge>
+        {test.variantCount > 1 ? (
+          <Badge variant="info">{test.variantCount} варианта</Badge>
+        ) : null}
         <Badge variant="info">
           5 — от {test.gradeScale['5']}%, 4 — от {test.gradeScale['4']}%, 3 — от {test.gradeScale['3']}%
         </Badge>
@@ -114,6 +117,11 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <Badge variant="neutral">{QUESTION_TYPE_LABELS[question.type]}</Badge>
                     <Badge variant="accent">{question.points} б.</Badge>
+                    {test.variantCount > 1 ? (
+                      <Badge variant={question.variant ? 'info' : 'neutral'}>
+                        {question.variant ? `вариант ${question.variant}` : 'во всех вариантах'}
+                      </Badge>
+                    ) : null}
                   </div>
                   <RichText html={question.content} className="text-sm text-ink" />
 

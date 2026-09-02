@@ -1,13 +1,13 @@
 'use client';
 
 import { use, useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Icon, Select } from '@/lib/ui';
+import { Button, Select } from '@/lib/ui';
 import { api, errorMessage } from '@/lib/api';
 import { notify } from '@/lib/notify';
 import { RichText } from '@/lib/rich';
 import { formatDate } from '@/lib/format';
 import { QUESTION_TYPE_LABELS } from '@/lib/catalog';
-import type { SheetsResponse } from '@/lib/types';
+import type { SheetLayout, SheetsResponse, SnapshotQuestion } from '@/lib/types';
 
 type Mode = 'sheets' | 'questions' | 'both';
 
@@ -32,8 +32,11 @@ export default function PrintPage({ params }: { params: Promise<{ id: string }> 
     if (!data) {
       return 0;
     }
-    const perWork = data.layout.pages.length;
-    return (mode === 'questions' ? 0 : data.works.length * perWork) + (mode === 'sheets' ? 0 : 1);
+    const sheets = data.works.reduce(
+      (sum, work) => sum + (data.layouts[String(work.variant)]?.pages.length ?? 0),
+      0,
+    );
+    return (mode === 'questions' ? 0 : sheets) + (mode === 'sheets' ? 0 : data.variantCount);
   }, [data, mode]);
 
   if (!data) {
@@ -43,6 +46,8 @@ export default function PrintPage({ params }: { params: Promise<{ id: string }> 
       </div>
     );
   }
+
+  const variants = Array.from({ length: data.variantCount }, (_, index) => index + 1);
 
   return (
     <div className="min-h-screen bg-bg">
@@ -55,6 +60,7 @@ export default function PrintPage({ params }: { params: Promise<{ id: string }> 
             <div className="text-sm font-bold text-ink truncate">{data.testTitle}</div>
             <div className="text-xs text-muted">
               {data.className} · {formatDate(data.date)} · листов к печати: {totalPages}
+              {data.variantCount > 1 ? ` · вариантов: ${data.variantCount}` : ''}
             </div>
           </div>
           <Select
@@ -80,18 +86,25 @@ export default function PrintPage({ params }: { params: Promise<{ id: string }> 
       </div>
 
       <div className="py-6 flex flex-col items-center gap-6">
-        {mode !== 'sheets' ? <QuestionSheet data={data} /> : null}
+        {mode !== 'sheets'
+          ? variants.map((variant) => <QuestionSheet key={variant} data={data} variant={variant} />)
+          : null}
         {mode !== 'questions'
-          ? data.works.map((work) =>
-              data.layout.pages.map((page) => (
+          ? data.works.map((work) => {
+              const layout = data.layouts[String(work.variant)];
+              if (!layout) {
+                return null;
+              }
+              return layout.pages.map((page) => (
                 <AnswerSheet
                   key={`${work.id}-${page.index}`}
                   data={data}
+                  layout={layout}
                   work={work}
                   pageIndex={page.index}
                 />
-              )),
-            )
+              ));
+            })
           : null}
       </div>
     </div>
@@ -99,12 +112,18 @@ export default function PrintPage({ params }: { params: Promise<{ id: string }> 
 }
 
 /** Лист с самими заданиями: тексты, формулы и картинки. */
-function QuestionSheet({ data }: { data: SheetsResponse }) {
+function QuestionSheet({ data, variant }: { data: SheetsResponse; variant: number }) {
+  const questions: SnapshotQuestion[] =
+    data.variantCount > 1
+      ? data.snapshot.questions.filter((question) => !question.variant || question.variant === variant)
+      : data.snapshot.questions;
+
   return (
     <section className="sheet-page shadow-2xl" style={{ padding: '16mm 14mm' }}>
       <div style={{ borderBottom: '0.5mm solid #000', paddingBottom: '4mm', marginBottom: '6mm' }}>
         <div style={{ fontSize: '9pt', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           {data.className} · {formatDate(data.date)}
+          {data.variantCount > 1 ? ` · вариант ${variant}` : ''}
         </div>
         <h1 style={{ fontSize: '16pt', fontWeight: 800, margin: '2mm 0 0' }}>{data.testTitle}</h1>
         {data.instructions ? (
@@ -113,7 +132,7 @@ function QuestionSheet({ data }: { data: SheetsResponse }) {
       </div>
 
       <ol style={{ listStyle: 'none', margin: 0, padding: 0, fontSize: '10pt' }}>
-        {data.snapshot.questions.map((question, index) => (
+        {questions.map((question, index) => (
           <li key={question.id} style={{ marginBottom: '5mm', breakInside: 'avoid' }}>
             <div style={{ display: 'flex', gap: '3mm' }}>
               <span style={{ fontWeight: 800, minWidth: '6mm' }}>{index + 1}.</span>
@@ -131,7 +150,7 @@ function QuestionSheet({ data }: { data: SheetsResponse }) {
                 ) : null}
                 <div style={{ fontSize: '8pt', marginTop: '1.5mm', color: '#555' }}>
                   {QUESTION_TYPE_LABELS[question.type]} · {question.points} б.
-                  {question.type === 'EXTENDED' ? ' · ответ на обороте бланка' : ''}
+                  {question.type === 'EXTENDED' ? ' · ответ на отдельном листе' : ''}
                 </div>
               </div>
             </div>
@@ -144,16 +163,18 @@ function QuestionSheet({ data }: { data: SheetsResponse }) {
 
 interface SheetProps {
   data: SheetsResponse;
-  work: { id: string; code: string; studentName: string };
+  layout: SheetLayout;
+  work: { id: string; code: string; variant: number; studentName: string };
   pageIndex: number;
 }
 
 /**
- * Бланк ответов. Все координаты берутся из разметки, которую отдал сервер, —
- * той же самой, по которой потом режется скан.
+ * Лист работы. Все координаты берутся из разметки, которую отдал сервер, —
+ * той же самой, по которой потом режется скан. Страницы двух видов: бланк
+ * с клетками и поле под развёрнутый ответ.
  */
-function AnswerSheet({ data, work, pageIndex }: SheetProps) {
-  const { sheet, pages, extended } = data.layout;
+function AnswerSheet({ data, layout, work, pageIndex }: SheetProps) {
+  const { sheet, pages, extended } = layout;
   const page = pages[pageIndex];
   const mm = (value: number) => `${value}mm`;
   const markerOffset = sheet.width - sheet.markerInset - sheet.markerSize;
@@ -166,19 +187,22 @@ function AnswerSheet({ data, work, pageIndex }: SheetProps) {
     { left: markerOffset, top: markerBottom },
   ];
 
+  const variantLabel = data.variantCount > 1 ? ` · вариант ${work.variant}` : '';
+
   return (
     <section className="sheet-page shadow-2xl">
       {markers.map((marker, index) => (
-        <span
+        <svg
           key={index}
           className="sheet-marker"
-          style={{
-            left: mm(marker.left),
-            top: mm(marker.top),
-            width: mm(sheet.markerSize),
-            height: mm(sheet.markerSize),
-          }}
-        />
+          style={{ left: mm(marker.left), top: mm(marker.top) }}
+          width={mm(sheet.markerSize)}
+          height={mm(sheet.markerSize)}
+          viewBox="0 0 10 10"
+          aria-hidden="true"
+        >
+          <rect x="0" y="0" width="10" height="10" fill="#000" />
+        </svg>
       ))}
 
       <div
@@ -196,7 +220,10 @@ function AnswerSheet({ data, work, pageIndex }: SheetProps) {
 
       {page.header ? (
         <>
-          <div className="sheet-text" style={{ left: mm(sheet.left), top: mm(22), fontSize: '8pt', letterSpacing: '0.08em' }}>
+          <div
+            className="sheet-text"
+            style={{ left: mm(sheet.left), top: mm(22), fontSize: '8pt', letterSpacing: '0.08em' }}
+          >
             EDWAY.SPACE · БЛАНК ОТВЕТОВ
           </div>
           <div
@@ -207,6 +234,7 @@ function AnswerSheet({ data, work, pageIndex }: SheetProps) {
           </div>
           <div className="sheet-text" style={{ left: mm(sheet.left), top: mm(36), fontSize: '10pt' }}>
             {data.className} · {formatDate(data.date)}
+            {variantLabel}
           </div>
           <div
             className="sheet-text"
@@ -229,15 +257,21 @@ function AnswerSheet({ data, work, pageIndex }: SheetProps) {
           </div>
           <div
             className="sheet-rule"
-            style={{ left: mm(sheet.left), top: mm(62), width: mm(sheet.right - sheet.left), height: '0.4mm' }}
+            style={{
+              left: mm(sheet.left),
+              top: mm(62),
+              width: mm(sheet.right - sheet.left),
+              borderTopWidth: '0.4mm',
+            }}
           />
         </>
       ) : (
         <div
           className="sheet-text"
-          style={{ left: mm(sheet.left), top: mm(24), fontSize: '9pt', fontWeight: 700 }}
+          style={{ left: mm(sheet.left), top: mm(20), fontSize: '9pt', fontWeight: 700, width: mm(150) }}
         >
-          {data.testTitle} · {work.studentName || 'без фамилии'} · страница {pageIndex + 1}
+          {data.testTitle} · {work.studentName || 'без фамилии'}
+          {variantLabel} · {page.kind === 'essay' ? 'развёрнутые ответы' : `страница ${pageIndex + 1}`}
         </div>
       )}
 
@@ -283,7 +317,52 @@ function AnswerSheet({ data, work, pageIndex }: SheetProps) {
         </div>
       ))}
 
-      {page.index === pages.length - 1 && extended.length ? (
+      {/* Поле под развёрнутый ответ: заголовок задания и разлиновка. */}
+      {page.blocks.map((block) => (
+        <div key={block.questionId}>
+          <div
+            className="sheet-text"
+            style={{
+              left: mm(sheet.left),
+              top: mm(block.y),
+              width: mm(sheet.right - sheet.left),
+              fontSize: '10pt',
+              fontWeight: 800,
+            }}
+          >
+            Задание {block.number} · {block.points} б.
+          </div>
+          {block.guideline ? (
+            <div
+              className="sheet-text"
+              style={{
+                left: mm(sheet.left),
+                top: mm(block.y + 5),
+                width: mm(sheet.right - sheet.left),
+                fontSize: '7.5pt',
+                color: '#666',
+              }}
+            >
+              {block.guideline}
+            </div>
+          ) : null}
+          {block.rules.map((line) => (
+            <div
+              key={line}
+              className="sheet-rule"
+              style={{
+                left: mm(sheet.left),
+                top: mm(line),
+                width: mm(sheet.right - sheet.left),
+                borderTopWidth: '0.2mm',
+                borderTopColor: '#999',
+              }}
+            />
+          ))}
+        </div>
+      ))}
+
+      {page.kind === 'answers' && page.index === pages.filter((p) => p.kind === 'answers').length - 1 && extended.length ? (
         <div
           className="sheet-text"
           style={{
@@ -294,9 +373,9 @@ function AnswerSheet({ data, work, pageIndex }: SheetProps) {
             lineHeight: 1.4,
           }}
         >
-          <b>На обороте:</b>{' '}
-          {extended.map((item) => `задание ${item.number} (${item.points} б.)`).join(', ')}. Подпишите
-          номер задания перед ответом.
+          <b>На отдельном листе:</b>{' '}
+          {extended.map((item) => `задание ${item.number} (${item.points} б.)`).join(', ')}. Он идёт
+          следом за этим бланком, с тем же кодом в углу.
         </div>
       ) : null}
     </section>

@@ -25,8 +25,10 @@ export default function NewTestPage() {
         description: state.description,
         instructions: state.instructions,
         gradeScale: state.gradeScale,
+        variantCount: state.variantCount,
         questions: state.questions.map((question) => ({
           type: question.type,
+          variant: question.variant,
           content: question.content,
           points: question.points,
           options: question.options,

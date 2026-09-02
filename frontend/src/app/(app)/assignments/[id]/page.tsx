@@ -91,6 +91,17 @@ export default function AssignmentPage({ params }: { params: Promise<{ id: strin
     }
   }
 
+  /** Ученик сел не за свою парту — вариант меняется, пока работа не сдана. */
+  async function changeVariant(workId: string, variant: number) {
+    try {
+      await api.patch(`/assignments/${id}/works/${workId}/variant`, { variant });
+      await load();
+      notify.toast(`Вариант ${variant}`);
+    } catch (e) {
+      notify.error('Не удалось сменить вариант', { text: errorMessage(e) });
+    }
+  }
+
   async function toggleClosed() {
     if (!data) {
       return;
@@ -183,7 +194,10 @@ export default function AssignmentPage({ params }: { params: Promise<{ id: strin
 
         <Card title="Как проверять" className="lg:col-span-2">
           <ol className="text-sm text-muted space-y-1.5 list-decimal pl-4">
-            <li>Распечатайте бланки — на каждом уже стоит фамилия и код работы.</li>
+            <li>
+              Распечатайте бланки — на каждом уже стоит фамилия, код работы
+              {data.snapshot.variantCount > 1 ? ' и номер варианта' : ''}.
+            </li>
             <li>
               Ученики пишут ответы <span className="text-ink font-semibold">печатными</span> буквами и
               цифрами, по одному знаку в клетке.
@@ -261,6 +275,9 @@ export default function AssignmentPage({ params }: { params: Promise<{ id: strin
         <Table
           columns={[
             { key: 'student', label: 'Ученик' },
+            ...(data.snapshot.variantCount > 1
+              ? [{ key: 'variant', label: 'Вариант', width: '110px' } as const]
+              : []),
             { key: 'code', label: 'Код бланка', hideOnMobile: true, width: '140px' },
             { key: 'status', label: 'Статус', width: '160px' },
             { key: 'score', label: 'Баллы', align: 'right', width: '110px' },
@@ -281,6 +298,23 @@ export default function AssignmentPage({ params }: { params: Promise<{ id: strin
                   </span>
                 ) : null}
               </td>
+              {data.snapshot.variantCount > 1 ? (
+                <td className="px-4 py-3 align-middle">
+                  {row.status === 'PENDING' ? (
+                    <Select
+                      value={row.variant}
+                      onChange={(value) => void changeVariant(row.id, Number(value))}
+                      options={Array.from({ length: data.snapshot.variantCount }, (_, i) => ({
+                        value: i + 1,
+                        label: `Вариант ${i + 1}`,
+                      }))}
+                      className="w-32"
+                    />
+                  ) : (
+                    <Badge variant="neutral">вариант {row.variant}</Badge>
+                  )}
+                </td>
+              ) : null}
               <td className="px-4 py-3 align-middle hidden md:table-cell">
                 <code className="text-xs text-muted tracking-wider">
                   {row.code.slice(0, 4)}-{row.code.slice(4)}

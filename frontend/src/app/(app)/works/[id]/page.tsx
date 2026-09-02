@@ -160,6 +160,7 @@ export default function WorkPage({ params }: { params: Promise<{ id: string }> }
         <Badge variant="accent">
           {total} из {work.maxScore} баллов · {work.percent}%
         </Badge>
+        {work.variantCount > 1 ? <Badge variant="info">вариант {work.variant}</Badge> : null}
         {work.grade ? <Badge variant={GRADE_TONES[work.grade]}>оценка {work.grade}</Badge> : null}
         <span className="text-xs text-faint">
           код {work.code.slice(0, 4)}-{work.code.slice(4)}

@@ -17,14 +17,36 @@ export interface SheetRow {
   cells: SheetCell[];
 }
 
+export interface EssayBlock {
+  questionId: string;
+  number: number;
+  points: number;
+  guideline: string;
+  y: number;
+  height: number;
+  rules: number[];
+}
+
+export interface SheetPage {
+  index: number;
+  kind: 'answers' | 'essay';
+  header: boolean;
+  rows: SheetRow[];
+  blocks: EssayBlock[];
+}
+
+export interface SheetLayout {
+  pages: SheetPage[];
+  extended: { questionId: string; number: number; points: number }[];
+  variant: number;
+}
+
 export interface SheetsResponse {
   assignmentId: string;
   testTitle: string;
   className: string;
   date: string;
-  layout: {
-    pages: { index: number; header: boolean; rows: SheetRow[] }[];
-    extended: { questionId: string; number: number; points: number }[];
-  };
-  works: { id: string; code: string; studentName: string }[];
+  variantCount: number;
+  layouts: Record<string, SheetLayout>;
+  works: { id: string; code: string; variant: number; studentName: string }[];
 }

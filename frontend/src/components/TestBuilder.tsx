@@ -12,6 +12,7 @@ export interface BuilderState {
   description: string;
   instructions: string;
   gradeScale: Record<string, number>;
+  variantCount: number;
   questions: Question[];
 }
 
@@ -33,6 +34,7 @@ export function emptyQuestion(type: QuestionType = 'SINGLE_CHOICE'): Question {
   return {
     id: uid('q'),
     order: 0,
+    variant: 0,
     type,
     content: '',
     points: type === 'EXTENDED' ? 5 : 1,
@@ -47,6 +49,7 @@ export function emptyState(): BuilderState {
     description: '',
     instructions: 'Ответы записывайте печатными буквами и цифрами, по одному знаку в клетке.',
     gradeScale: { ...DEFAULT_GRADE_SCALE },
+    variantCount: 1,
     questions: [emptyQuestion()],
   };
 }
@@ -59,10 +62,20 @@ interface Props {
 export function TestBuilder({ state, onChange }: Props) {
   const [open, setOpen] = useState<string | null>(state.questions[0]?.id ?? null);
 
-  const maxScore = useMemo(
-    () => state.questions.reduce((sum, question) => sum + (question.points || 0), 0),
-    [state.questions],
+  // Максимум считается по варианту: общие задания идут во все, остальные —
+  // только в свой. Расхождение между вариантами платформа не пропустит.
+  const variantScores = useMemo(
+    () =>
+      Array.from({ length: state.variantCount }, (_, index) =>
+        state.questions
+          .filter((question) => !question.variant || question.variant === index + 1)
+          .reduce((sum, question) => sum + (question.points || 0), 0),
+      ),
+    [state.questions, state.variantCount],
   );
+
+  const maxScore = variantScores[0] ?? 0;
+  const uneven = new Set(variantScores).size > 1;
 
   function patch(next: Partial<BuilderState>) {
     onChange({ ...state, ...next });
@@ -137,6 +150,40 @@ export function TestBuilder({ state, onChange }: Props) {
       </Card>
 
       <Card
+        title="Варианты"
+        subtitle="Ученики получат их по очереди — соседям по парте достанутся разные"
+      >
+        <div className="flex flex-wrap items-end gap-4">
+          <Select
+            value={state.variantCount}
+            onChange={(value) => patch({ variantCount: Number(value) || 1 })}
+            label="Сколько вариантов"
+            className="w-56"
+            options={[1, 2, 3, 4].map((count) => ({
+              value: count,
+              label: count === 1 ? 'Один — всем одинаковый' : `${count} варианта`,
+            }))}
+          />
+          {state.variantCount > 1 ? (
+            <div className="flex flex-wrap items-center gap-2 pb-1">
+              {variantScores.map((score, index) => (
+                <Badge key={index} variant={uneven ? 'warning' : 'neutral'}>
+                  Вариант {index + 1} · {score} б.
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        {state.variantCount > 1 ? (
+          <p className={`text-xs mt-3 ${uneven ? 'text-warning' : 'text-faint'}`}>
+            {uneven
+              ? 'Варианты стоят разного числа баллов — шкала оценок одна на всех, уравняйте их.'
+              : 'Отметьте у каждого задания его вариант. Задания «во всех вариантах» попадут в каждый бланк.'}
+          </p>
+        ) : null}
+      </Card>
+
+      <Card
         title="Шкала оценок"
         subtitle="Порог в процентах от максимума — ниже тройки ставится двойка"
         actions={<Badge variant="accent">Максимум {maxScore} б.</Badge>}
@@ -166,6 +213,7 @@ export function TestBuilder({ state, onChange }: Props) {
             question={question}
             index={index}
             total={state.questions.length}
+            variantCount={state.variantCount}
             open={open === question.id}
             onToggle={() => setOpen(open === question.id ? null : question.id)}
             onChange={(next) => updateQuestion(question.id, next)}
@@ -201,6 +249,7 @@ interface QuestionProps {
   question: Question;
   index: number;
   total: number;
+  variantCount: number;
   open: boolean;
   onToggle: () => void;
   onChange: (next: Partial<Question>) => void;
@@ -208,7 +257,17 @@ interface QuestionProps {
   onMove: (delta: number) => void;
 }
 
-function QuestionCard({ question, index, total, open, onToggle, onChange, onRemove, onMove }: QuestionProps) {
+function QuestionCard({
+  question,
+  index,
+  total,
+  variantCount,
+  open,
+  onToggle,
+  onChange,
+  onRemove,
+  onMove,
+}: QuestionProps) {
   const key = question.answerKey ?? {};
 
   function setKey(next: Partial<AnswerKey>) {
@@ -268,6 +327,11 @@ function QuestionCard({ question, index, total, open, onToggle, onChange, onRemo
             </span>
             <span className="block text-xs text-muted mt-0.5">
               {QUESTION_TYPE_LABELS[question.type]} · {question.points} б.
+              {variantCount > 1
+                ? question.variant
+                  ? ` · вариант ${question.variant}`
+                  : ' · во всех вариантах'
+                : ''}
             </span>
           </span>
         </button>
@@ -308,6 +372,22 @@ function QuestionCard({ question, index, total, open, onToggle, onChange, onRemo
             <span className="ng-label text-muted block mb-1.5">Текст задания</span>
             <Editor value={question.content} onChange={(html) => onChange({ content: html })} />
           </div>
+
+          {variantCount > 1 ? (
+            <Select
+              value={question.variant}
+              onChange={(value) => onChange({ variant: Number(value) || 0 })}
+              label="В каком варианте"
+              options={[
+                { value: 0, label: 'Во всех вариантах' },
+                ...Array.from({ length: variantCount }, (_, i) => ({
+                  value: i + 1,
+                  label: `Только вариант ${i + 1}`,
+                })),
+              ]}
+              className="sm:max-w-xs"
+            />
+          ) : null}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select

@@ -62,6 +62,8 @@ export interface QuestionOption {
 export interface Question {
   id: string;
   order: number;
+  /** 0 — задание во всех вариантах, 1..N — только в своём. */
+  variant: number;
   type: QuestionType;
   content: string;
   points: number;
@@ -74,6 +76,7 @@ export interface TestSummary {
   title: string;
   description: string;
   isPublished: boolean;
+  variantCount: number;
   questionCount: number;
   maxScore: number;
   assignmentCount: number;
@@ -115,6 +118,7 @@ export interface AssignmentRow {
   checked: number;
   pending: number;
   maxScore: number;
+  variantCount: number;
 }
 
 export interface SnapshotOption {
@@ -126,6 +130,7 @@ export interface SnapshotOption {
 export interface SnapshotQuestion {
   id: string;
   order: number;
+  variant: number;
   type: QuestionType;
   content: string;
   points: number;
@@ -140,6 +145,7 @@ export interface TestSnapshot {
   description: string;
   instructions: string;
   gradeScale: Record<string, number>;
+  variantCount: number;
   questions: SnapshotQuestion[];
   maxScore: number;
 }
@@ -148,6 +154,7 @@ export interface WorkRow {
   id: string;
   code: string;
   status: WorkStatus;
+  variant: number;
   studentId: string | null;
   studentName: string;
   autoScore: number;
@@ -192,10 +199,23 @@ export interface SheetRow {
   cells: CellBox[];
 }
 
+/** Место под развёрнутый ответ: заголовок задания и разлинованное поле. */
+export interface EssayBlock {
+  questionId: string;
+  number: number;
+  points: number;
+  guideline: string;
+  y: number;
+  height: number;
+  rules: number[];
+}
+
 export interface SheetPage {
   index: number;
+  kind: 'answers' | 'essay';
   header: boolean;
   rows: SheetRow[];
+  blocks: EssayBlock[];
 }
 
 export interface SheetGeometry {
@@ -219,6 +239,7 @@ export interface SheetGeometry {
 export interface SheetLayout {
   pages: SheetPage[];
   extended: { questionId: string; number: number; points: number }[];
+  variant: number;
   sheet: SheetGeometry;
 }
 
@@ -229,8 +250,10 @@ export interface SheetsResponse {
   date: string;
   instructions: string;
   snapshot: TestSnapshot;
-  layout: SheetLayout;
-  works: { id: string; code: string; studentName: string }[];
+  variantCount: number;
+  /** Разметка каждого варианта: у бланков разные наборы заданий. */
+  layouts: Record<string, SheetLayout>;
+  works: { id: string; code: string; variant: number; studentName: string }[];
 }
 
 export interface WorkAnswer {
@@ -250,6 +273,8 @@ export interface WorkDetail {
   id: string;
   code: string;
   status: WorkStatus;
+  variant: number;
+  variantCount: number;
   studentId: string | null;
   studentName: string;
   assignmentId: string;

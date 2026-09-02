@@ -77,7 +77,7 @@ test('бланк со вписанными ответами распознаёт
 
   const sheets = (await (await page.request.get(`/api/assignments/${assignmentId}/sheets`)).json()) as SheetsResponse;
   const work = sheets.works[0];
-  const rows = sheets.layout.pages[0].rows;
+  const rows = sheets.layouts[String(work.variant)].pages[0].rows;
 
   // Второй вариант — «Б», ответ на второе задание — «36».
   const written: Record<string, string> = {

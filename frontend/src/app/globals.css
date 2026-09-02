@@ -489,6 +489,18 @@
   break-after: page;
 }
 
+/*
+  Браузер по умолчанию не печатает фоновую заливку — а на бланке ею нарисованы
+  угловые метки, без которых скан не выровнять. Просим печатать цвета как есть;
+  сами метки на всякий случай нарисованы не фоном, а SVG: он печатается всегда,
+  даже если в диалоге печати снята галочка «фоновая графика».
+*/
+.sheet-page,
+.sheet-page * {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
 .sheet-page:last-child {
   page-break-after: auto;
   break-after: auto;
@@ -496,13 +508,18 @@
 
 .sheet-marker {
   position: absolute;
-  background: #000;
+  display: block;
 }
 
-/* Линейка под шапкой: рисуется тем же чёрным, но меткой выравнивания не является. */
+/*
+  Линейки: рамка вместо заливки — её принтер печатает независимо от настройки
+  фоновой графики.
+*/
 .sheet-rule {
   position: absolute;
-  background: #000;
+  border-top-style: solid;
+  border-top-color: #000;
+  height: 0;
 }
 
 .sheet-cell {
