@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { Sidebar } from '@/components/Sidebar';
 import { Topbar } from '@/components/Topbar';
+import Link from 'next/link';
 import { PoweredBy } from '@/components/PoweredBy';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -51,7 +52,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
 
         <footer className="border-t border-line px-4 sm:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-xs text-faint">edway.space · школьное тестирование</p>
+          <p className="text-xs text-faint">
+            edway.space · школьное тестирование ·{' '}
+            <Link href="/download" className="text-muted hover:text-accent transition-colors">
+              приложение для компьютера
+            </Link>
+          </p>
           <PoweredBy />
         </footer>
       </div>

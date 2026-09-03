@@ -1,0 +1,31 @@
+{
+  "name": "edway-space-desktop",
+  "productName": "edway.space",
+  "version": "1.0.0",
+  "private": true,
+  "description": "edway.space — школьное тестирование, настольное приложение",
+  "author": "edway.space",
+  "license": "Apache-2.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc && npm run assets",
+    "assets": "node scripts/copy-assets.mjs",
+    "dev": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder --publish never",
+    "dist:all": "npm run build && electron-builder --mac --win --linux --publish never",
+    "type-check": "tsc --noEmit"
+  },
+  "edway": {
+    "defaultUrl": ""
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "electron": "^44.1.1",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.9.3"
+  },
+  "allowScripts": {
+    "electron": true
+  }
+}
