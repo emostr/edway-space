@@ -4,9 +4,15 @@
   "version": "1.0.0",
   "private": true,
   "description": "edway.space — школьное тестирование, настольное приложение",
-  "author": "edway.space",
+  "author": "edway.space <noreply@edway.space>",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/emostr/edway-space",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emostr/edway-space.git"
+  },
   "main": "dist/main.js",
+  "desktopName": "edway-space.desktop",
   "scripts": {
     "build": "tsc && npm run assets",
     "assets": "node scripts/copy-assets.mjs",

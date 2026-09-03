@@ -43,8 +43,14 @@ portable:
   artifactName: edway-space-portable-${arch}.${ext}
 
 linux:
-  category: Education
+  # Пакету .deb нужен сопровождающий; окно приложения без desktopName система
+  # не связывает с ярлыком в меню.
+  maintainer: edway.space <noreply@edway.space>
+  # Имя ярлыка платформа берёт из package.json — так окно связывается с
+  # записью в меню приложений.
+  syncDesktopName: true
   synopsis: Школьная платформа тестирования
+  category: Education
   description: Конструктор тестов, печать бланков и проверка работ
   desktop:
     entry:
