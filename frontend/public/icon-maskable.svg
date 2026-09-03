@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="edway.space">
+  <rect width="512" height="512" fill="#00b294"/>
+  <g transform="translate(256 256) scale(0.62) translate(-256 -256)">
+    <g fill="none" stroke="#04231d" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter">
+      <path d="M256 128 96 200l160 72 160-72-160-72z"/>
+      <path d="M144 232v76c48 34 176 34 224 0v-76"/>
+    </g>
+    <rect x="232" y="300" width="48" height="96" fill="#04231d"/>
+  </g>
+</svg>

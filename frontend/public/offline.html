@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#00b294" />
+    <title>Нет соединения · edway.space</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: #0a0a0a;
+        color: #f5f5f5;
+        font-family: 'Open Sans', system-ui, -apple-system, sans-serif;
+        font-size: 15px;
+        line-height: 1.55;
+      }
+      .box {
+        max-width: 26rem;
+      }
+      .bar {
+        width: 40px;
+        height: 4px;
+        background: #00b294;
+        margin-bottom: 14px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+      p {
+        color: #8a8a8a;
+        font-size: 14px;
+      }
+      ul {
+        color: #8a8a8a;
+        font-size: 14px;
+        padding-left: 18px;
+      }
+      button {
+        margin-top: 20px;
+        height: 40px;
+        padding: 0 18px;
+        border: 0;
+        background: #00b294;
+        color: #04231d;
+        font: inherit;
+        font-weight: 700;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      button:hover {
+        filter: brightness(1.08);
+      }
+      .foot {
+        margin-top: 28px;
+        border-top: 1px solid #2a2a2a;
+        padding-top: 14px;
+        font-size: 12px;
+        color: #5a5a5a;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <div class="bar"></div>
+      <h1>Нет соединения</h1>
+      <p>
+        Платформа живёт на школьном сервере, и без сети до него не достучаться. Проверьте
+        подключение и откройте страницу заново.
+      </p>
+      <ul>
+        <li>Проверка работ и журнал требуют сервера — они появятся, как только связь вернётся.</li>
+        <li>Напечатанные бланки от сети не зависят: их можно раздать и собрать, а загрузить сканы позже.</li>
+      </ul>
+      <button type="button" onclick="location.reload()">Попробовать снова</button>
+      <div class="foot">edway.space · школьное тестирование</div>
+    </div>
+  </body>
+</html>
