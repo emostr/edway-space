@@ -1,6 +1,8 @@
 node_modules/
 dist/
 build/
+# Иконки установщика — часть исходников, а не результат сборки.
+!desktop/build/
 .next/
 .env
 deploy.conf

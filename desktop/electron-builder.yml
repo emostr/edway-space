@@ -12,12 +12,6 @@ files:
   - dist/**/*
   - package.json
 
-# Школьная сборка может зашить свой адрес: EDWAY_DEFAULT_URL при вызове
-# electron-builder попадёт в package.json приложения.
-extraMetadata:
-  edway:
-    defaultUrl: ${env.EDWAY_DEFAULT_URL}
-
 # Имена предсказуемые: на них ссылается страница загрузки платформы, и ссылки
 # не должны ломаться от версии к версии.
 mac:

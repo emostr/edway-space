@@ -67,6 +67,30 @@ test.describe('Настольное приложение', () => {
       await fs.rm(userData, { recursive: true, force: true });
     }
   });
+
+  test('со вшитым адресом открывает платформу сразу, без экрана подключения', async () => {
+    test.slow();
+    const userData = await fs.mkdtemp(join(tmpdir(), 'edway-desktop-'));
+    const { ELECTRON_RUN_AS_NODE: _ignored, ...env } = process.env;
+
+    // Так ведёт себя установщик, собранный школой под свой сервер: адрес уже
+    // внутри, учителю ничего вводить не нужно.
+    const app = await electron.launch({
+      executablePath: electronBinary(),
+      args: ['.', `--user-data-dir=${userData}`],
+      cwd: APP_DIR,
+      env: { ...env, EDWAY_URL: SERVER } as Record<string, string>,
+    });
+
+    try {
+      const window = await app.firstWindow();
+      await window.waitForURL((url) => url.href.startsWith(SERVER), { timeout: 30_000 });
+      await expect(window.getByRole('heading', { name: 'Вход в кабинет' })).toBeVisible();
+    } finally {
+      await app.close();
+      await fs.rm(userData, { recursive: true, force: true });
+    }
+  });
 });
 
 test.describe('Страница загрузки', () => {

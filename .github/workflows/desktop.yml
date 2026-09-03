@@ -52,7 +52,7 @@ jobs:
           # на странице загрузки.
           CSC_IDENTITY_AUTO_DISCOVERY: false
           EDWAY_DEFAULT_URL: ${{ github.event.inputs.defaultUrl }}
-        run: npx electron-builder ${{ matrix.target }} --publish never
+        run: node scripts/build-installers.mjs ${{ matrix.target }}
 
       - uses: actions/upload-artifact@v4
         with:

@@ -11,9 +11,9 @@
     "build": "tsc && npm run assets",
     "assets": "node scripts/copy-assets.mjs",
     "dev": "npm run build && electron .",
-    "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder --publish never",
-    "dist:all": "npm run build && electron-builder --mac --win --linux --publish never",
+    "pack": "npm run build && node scripts/build-installers.mjs --dir",
+    "dist": "npm run build && node scripts/build-installers.mjs",
+    "dist:all": "npm run build && node scripts/build-installers.mjs --mac --win --linux",
     "type-check": "tsc --noEmit"
   },
   "edway": {
