@@ -35,7 +35,7 @@ const BUILDS: Build[] = [
     hint: 'Один файл, запускается с флешки',
     file: 'edway-space-portable-x64.exe',
     icon: 'download',
-  }
+  },
 ];
 
 /** Что предложить первым: угадываем систему по строке браузера. */
