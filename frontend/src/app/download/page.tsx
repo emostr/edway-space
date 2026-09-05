@@ -35,35 +35,7 @@ const BUILDS: Build[] = [
     hint: 'Один файл, запускается с флешки',
     file: 'edway-space-portable-x64.exe',
     icon: 'download',
-  },
-  {
-    id: 'mac-arm',
-    system: 'macOS, Apple Silicon',
-    hint: 'M1 и новее',
-    file: 'edway-space-arm64.dmg',
-    icon: 'monitor',
-  },
-  {
-    id: 'mac-intel',
-    system: 'macOS, Intel',
-    hint: 'Компьютеры до 2020 года',
-    file: 'edway-space-x64.dmg',
-    icon: 'monitor',
-  },
-  {
-    id: 'debian',
-    system: 'Debian и Ubuntu',
-    hint: 'Пакет .deb, ставится двойным щелчком',
-    file: 'edway-space-amd64.deb',
-    icon: 'monitor',
-  },
-  {
-    id: 'appimage',
-    system: 'Другой Linux',
-    hint: 'AppImage: сделать исполняемым и запустить',
-    file: 'edway-space-x86_64.AppImage',
-    icon: 'download',
-  },
+  }
 ];
 
 /** Что предложить первым: угадываем систему по строке браузера. */
