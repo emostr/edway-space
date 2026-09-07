@@ -56,7 +56,8 @@
 4. **Доступ для проверяющих.** Показательная школа с учителем, которому не нужны ни смена пароля, ни второй фактор:
 
    ```bash
-   docker compose exec backend npm run demo:school -- --password=…
+   cd /opt/edway   # каталог из APP_DIR в deploy.conf, не тот, откуда запускали deploy.sh
+   sudo docker compose exec backend npm run demo:school -- --password=ваш-пароль
    ```
 
 5. **После одобрения** — боевые ключи в `.env`, адрес уведомлений в кабинете кассы и `docker compose up -d backend`.
@@ -131,9 +132,11 @@ docker compose logs backend | grep -A5 "администратора платф�
 Потеряли доступ администратора платформы — сбрасывать его некому, поэтому есть скрипт:
 
 ```bash
-docker compose exec backend npm run admin:reset
+cd /opt/edway && sudo docker compose exec backend npm run admin:reset
 # в разработке, с локальной базой: cd backend && npm run admin:reset
 ```
+
+Служебные команды выполняются из каталога платформы (`APP_DIR` в `deploy.conf`, по умолчанию `/opt/edway`) — там лежат `docker-compose.yml` и `.env` работающего стека. Из каталога с исходниками `docker compose` не увидит запущенных контейнеров. `sudo` нужен, пока ваш пользователь не в группе `docker`.
 
 Стек состоит из четырёх контейнеров: PostgreSQL, API на NestJS, интерфейс на Next.js и Caddy перед ними — он же отдаёт страницы ошибок. Сканы работ и картинки заданий лежат в отдельном томе `uploads`, а не в базе.
 

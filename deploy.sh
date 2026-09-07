@@ -646,7 +646,11 @@ summary() {
 	else
 		printf '  Уведомления кассы:  %s://%s/api/billing/webhook\n\n' "$scheme" "$DOMAIN"
 	fi
-	printf '  Логи приложения:  cd %s && docker compose logs -f\n' "$APP_DIR"
+	printf '  Служебные команды выполняются из каталога платформы и от root:\n'
+	printf '    cd %s\n' "$APP_DIR"
+	printf '    sudo docker compose logs -f                        журнал\n'
+	printf '    sudo docker compose exec backend npm run admin:reset   сброс доступа владельца\n'
+	printf '    sudo docker compose exec backend npm run demo:school   показательная школа\n'
 	printf '  Логи Caddy:       journalctl -u caddy -f\n'
 	printf '  Обновление:       sudo %s/deploy.sh\n\n' "$APP_DIR"
 }
