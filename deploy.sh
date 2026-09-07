@@ -58,10 +58,36 @@ parse_args() {
 	done
 }
 
+# Разбор строки «КЛЮЧ=значение». Конфиг именно читается, а не выполняется:
+# в нём живут реквизиты с пробелами — «Павлов Матвей Ильич», — и source
+# принял бы отчество за команду. Кавычки вокруг значения снимаются, если их
+# поставили, но обязательными не являются.
+read_config() {
+	local file=$1 line key value trimmed
+	while IFS= read -r line || [[ -n $line ]]; do
+		line=${line%$'\r'}
+		trimmed=${line#"${line%%[![:space:]]*}"}
+		[[ -z $trimmed || $trimmed == '#'* ]] && continue
+		if [[ ! $trimmed =~ ^(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=(.*)$ ]]; then
+			warn "строка конфигурации пропущена, не похожа на «КЛЮЧ=значение»: $trimmed"
+			continue
+		fi
+		key=${BASH_REMATCH[2]}
+		value=${BASH_REMATCH[3]}
+		value=${value#"${value%%[![:space:]]*}"}
+		value=${value%"${value##*[![:space:]]}"}
+		if [[ ${#value} -ge 2 && $value == \"*\" ]]; then
+			value=${value:1:${#value}-2}
+		elif [[ ${#value} -ge 2 && $value == \'*\' ]]; then
+			value=${value:1:${#value}-2}
+		fi
+		printf -v "$key" '%s' "$value"
+	done <"$file"
+}
+
 load_config() {
 	[[ -f $CONFIG_FILE ]] || die "нет файла конфигурации $CONFIG_FILE — скопируйте deploy.conf.example в deploy.conf и заполните его"
-	# shellcheck disable=SC1090
-	source "$CONFIG_FILE"
+	read_config "$CONFIG_FILE"
 
 	: "${DOMAIN:=}"
 	: "${ACME_EMAIL:=}"
@@ -83,6 +109,7 @@ load_config() {
 	: "${PRICE_RUB:=14900}"
 	: "${YOOKASSA_SHOP_ID:=}"
 	: "${YOOKASSA_SECRET_KEY:=}"
+	: "${YOOKASSA_RECEIPT:=off}"
 	: "${LOGIN_RATE_LIMIT:=20}"
 	: "${REGISTER_RATE_LIMIT:=5}"
 	: "${CONTACT_EMAIL:=}"
@@ -370,6 +397,7 @@ TOTP_ISSUER=$TOTP_ISSUER
 PRICE_RUB=$PRICE_RUB
 YOOKASSA_SHOP_ID=$YOOKASSA_SHOP_ID
 YOOKASSA_SECRET_KEY=$YOOKASSA_SECRET_KEY
+YOOKASSA_RECEIPT=$YOOKASSA_RECEIPT
 
 LOGIN_RATE_LIMIT=$LOGIN_RATE_LIMIT
 REGISTER_RATE_LIMIT=$REGISTER_RATE_LIMIT
