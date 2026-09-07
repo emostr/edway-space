@@ -87,8 +87,8 @@ export const SUBJECTS = [
 ];
 
 export const ROLE_LABELS: Record<string, string> = {
-  PLATFORM_ADMIN: 'Администратор платформы',
-  SCHOOL_ADMIN: 'Администратор школы',
+  PLATFORM_ADMIN: 'Администратор',
+  SCHOOL_ADMIN: 'Администратор',
   TEACHER: 'Учитель',
 };
 

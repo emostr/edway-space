@@ -95,10 +95,10 @@ export async function completeSetup(page: Page, login: string, temporary: string
   await fillField(page, page.getByLabel('Новый пароль ещё раз'), PASSWORD);
   await page.getByRole('button', { name: 'Сменить пароль' }).click();
 
-  // Ключ показан на экране — тем же алгоритмом считаем код, что и телефон.
+  // Ключ показан на экране рядом с QR — тем же алгоритмом считаем код,
+  // что и приложение на телефоне.
   const secret = (await page.locator('.font-mono.text-lg').innerText()).trim();
-  await fillField(page, page.getByLabel('Код из приложения'), totpCode(secret));
-  await page.getByRole('button', { name: 'Подтвердить' }).click();
+  await submitTotp(page, secret, 'Код из приложения');
 
   await expect(page.getByRole('heading', { name: 'Резервные коды' })).toBeVisible();
   await page.getByRole('button', { name: /Записал/ }).click();
@@ -198,8 +198,7 @@ export async function platformAdmin(page: Page): Promise<{ login: string; passwo
   await page.getByRole('button', { name: 'Сменить пароль' }).click();
 
   const secret = (await page.locator('.font-mono.text-lg').innerText()).trim();
-  await fillField(page, page.getByLabel('Код из приложения'), totpCode(secret));
-  await page.getByRole('button', { name: 'Подтвердить' }).click();
+  await submitTotp(page, secret, 'Код из приложения');
   await expect(page.getByRole('heading', { name: 'Резервные коды' })).toBeVisible();
   await page.getByRole('button', { name: /Записал/ }).click();
   await expect(page).toHaveURL(/\/admin/);

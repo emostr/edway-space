@@ -1,5 +1,14 @@
 import { expect, test } from '@playwright/test';
-import { PASSWORD, completeSetup, dismissToasts, fillField, open, register, registerSchool } from './helpers';
+import {
+  PASSWORD,
+  completeSetup,
+  dismissToasts,
+  fillField,
+  open,
+  register,
+  registerSchool,
+  submitTotp,
+} from './helpers';
 
 test.describe('Регистрация школы и вход', () => {
   test('директор заводит школу, проходит настройку и попадает в кабинет', async ({ page }) => {
@@ -31,6 +40,32 @@ test.describe('Регистрация школы и вход', () => {
 
     const classes = await page.request.get('/api/classes');
     expect(classes.status(), 'API должен отвечать 423, пока настройка не пройдена').toBe(423);
+  });
+
+  test('второй фактор подключается по QR-коду или ключу', async ({ page }) => {
+    test.slow();
+    const created = await registerSchool(page);
+
+    await open(page, '/login');
+    await fillField(page, page.getByLabel('Логин'), created.login);
+    await fillField(page, page.getByLabel('Пароль'), created.temporary);
+    await page.getByRole('button', { name: 'Войти' }).click();
+
+    await fillField(page, page.getByLabel('Временный пароль'), created.temporary);
+    await fillField(page, page.getByLabel(/^Новый пароль$/), PASSWORD);
+    await fillField(page, page.getByLabel('Новый пароль ещё раз'), PASSWORD);
+    await page.getByRole('button', { name: 'Сменить пароль' }).click();
+
+    // Код рисуется в SVG — его видно и на экране с высокой плотностью точек.
+    const qr = page.locator('svg[shape-rendering="crispEdges"]').first();
+    await expect(qr).toBeVisible();
+
+    // Рядом — тот же ключ строкой: для телефона без камеры.
+    const secret = (await page.locator('.font-mono.text-lg').innerText()).trim();
+    expect(secret).toMatch(/^[A-Z2-7]{16,}$/);
+
+    await submitTotp(page, secret, 'Код из приложения');
+    await expect(page.getByRole('heading', { name: 'Резервные коды' })).toBeVisible();
   });
 
   test('второй фактор обязателен для входа администратора', async ({ page }) => {

@@ -1,5 +1,14 @@
 import { test } from '@playwright/test';
-import { dismissToasts, fillField, freeClass, open, register } from './helpers';
+import {
+  PASSWORD,
+  dismissToasts,
+  fillField,
+  freeClass,
+  open,
+  register,
+  registerSchool,
+  submitTotp,
+} from './helpers';
 
 /**
  * Обход интерфейса со снимками экрана: быстрый способ увидеть, что все
@@ -10,10 +19,28 @@ test('обход разделов со снимками', async ({ page }) => {
   test.slow();
   const shot = (name: string) => page.screenshot({ path: `screenshots/${name}.png`, fullPage: true });
 
+  await open(page, '/');
+  await shot('00-landing');
+
   await open(page, '/login');
   await shot('01-login');
 
-  await register(page);
+  // Первичная настройка: пароль и второй фактор с кодом для камеры.
+  const created = await registerSchool(page);
+  await open(page, '/login');
+  await fillField(page, page.getByLabel('Логин'), created.login);
+  await fillField(page, page.getByLabel('Пароль'), created.temporary);
+  await page.getByRole('button', { name: 'Войти' }).click();
+  await fillField(page, page.getByLabel('Временный пароль'), created.temporary);
+  await fillField(page, page.getByLabel(/^Новый пароль$/), PASSWORD);
+  await fillField(page, page.getByLabel('Новый пароль ещё раз'), PASSWORD);
+  await page.getByRole('button', { name: 'Сменить пароль' }).click();
+  await page.locator('svg[shape-rendering="crispEdges"]').first().waitFor();
+  await shot('01b-totp');
+
+  const secret = (await page.locator('.font-mono.text-lg').innerText()).trim();
+  await submitTotp(page, secret, 'Код из приложения');
+  await page.getByRole('button', { name: /Записал/ }).click();
   await dismissToasts(page);
   await shot('02-dashboard');
 

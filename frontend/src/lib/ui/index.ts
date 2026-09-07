@@ -14,6 +14,7 @@ export { Input } from './Input';
 export { Modal } from './Modal';
 export { PageHeader } from './PageHeader';
 export { Progress } from './Progress';
+export { QrCode } from './QrCode';
 export { Select } from './Select';
 export { Skeleton } from './Skeleton';
 export { Sparkline } from './Sparkline';

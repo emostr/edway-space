@@ -18,6 +18,7 @@
     "chart.js": "^4.5.1",
     "katex": "^0.18.5",
     "next": "^16.3.4",
+    "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "sweetalert2-neutral": "11.22.2-neutral"
@@ -26,6 +27,7 @@
     "@tailwindcss/postcss": "^4.3.3",
     "@types/katex": "^0.16.8",
     "@types/node": "^22.15.3",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.4",
     "tailwindcss": "^4.3.3",

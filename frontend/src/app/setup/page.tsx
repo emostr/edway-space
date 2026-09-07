@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Alert, Badge, Button, Card, Icon, Input } from '@/lib/ui';
+import { Alert, Badge, Button, Card, Icon, Input, QrCode } from '@/lib/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { notify } from '@/lib/notify';
@@ -211,16 +211,25 @@ export default function SetupPage() {
           >
             <ol className="text-sm text-muted space-y-2 list-decimal pl-4 mb-5">
               <li>Откройте приложение-аутентификатор и добавьте новую учётную запись.</li>
-              <li>Введите ключ вручную — сканировать здесь нечего.</li>
+              <li>Наведите камеру на код — или введите ключ руками, если камеры нет.</li>
               <li>Впишите шестизначный код, который появится в приложении.</li>
             </ol>
 
-            <div className="border border-line bg-surface-2 px-4 py-3 mb-5">
-              <div className="ng-label text-muted mb-1">Ключ</div>
-              <div className="font-mono text-lg text-ink break-all">{secret || '…'}</div>
+            <div className="flex flex-col sm:flex-row gap-5 mb-5">
               {otpauth ? (
-                <div className="text-[11px] text-faint mt-2 break-all">{otpauth}</div>
-              ) : null}
+                <QrCode value={otpauth} size={188} className="shrink-0 self-start" />
+              ) : (
+                <div className="w-[188px] h-[188px] bg-surface-2 border border-line shrink-0 animate-pulse" />
+              )}
+
+              <div className="min-w-0 flex-1">
+                <div className="ng-label text-muted mb-1">Ключ для ручного ввода</div>
+                <div className="font-mono text-lg text-ink break-all">{secret || '…'}</div>
+                <p className="text-xs text-faint mt-3 leading-relaxed">
+                  Ключ и код в приложении — одно и то же: сканирование просто избавляет от
+                  переписывания тридцати двух знаков.
+                </p>
+              </div>
             </div>
 
             <form className="space-y-4" onSubmit={confirmTotp}>
