@@ -78,6 +78,20 @@ load_config() {
 	: "${POSTGRES_USER:=edway}"
 	: "${POSTGRES_DB:=edway}"
 	: "${SESSION_DAYS:=90}"
+	: "${ADMIN_LOGIN:=admin}"
+	: "${TOTP_ISSUER:=edway.space}"
+	: "${PRICE_RUB:=14900}"
+	: "${YOOKASSA_SHOP_ID:=}"
+	: "${YOOKASSA_SECRET_KEY:=}"
+	: "${LOGIN_RATE_LIMIT:=20}"
+	: "${REGISTER_RATE_LIMIT:=5}"
+	: "${CONTACT_EMAIL:=}"
+	: "${OPERATOR_NAME:=}"
+	: "${OPERATOR_STATUS:=}"
+	: "${OPERATOR_INN:=}"
+	: "${OPERATOR_ADDRESS:=}"
+	: "${OPERATOR_EMAIL:=}"
+	: "${DOCS_DATE:=}"
 	: "${BACKUP_BEFORE_DEPLOY:=yes}"
 	: "${BACKUP_KEEP:=10}"
 
@@ -327,9 +341,10 @@ write_env() {
 	local scheme=https
 	[[ $TLS_MODE == off ]] && scheme=http
 
-	local db_pass jwt
+	local db_pass jwt admin_pass
 	db_pass=$(resolve_secret POSTGRES_PASSWORD)
 	jwt=$(resolve_secret JWT_SECRET)
+	admin_pass=$(resolve_secret ADMIN_PASSWORD)
 
 	[[ -f $ENV_FILE ]] && backup_path "$ENV_FILE"
 
@@ -347,6 +362,25 @@ HTTP_PORT=$HTTP_PORT
 HTTP_BIND=$HTTP_BIND
 
 SESSION_DAYS=$SESSION_DAYS
+
+ADMIN_LOGIN=$ADMIN_LOGIN
+ADMIN_PASSWORD=$admin_pass
+TOTP_ISSUER=$TOTP_ISSUER
+
+PRICE_RUB=$PRICE_RUB
+YOOKASSA_SHOP_ID=$YOOKASSA_SHOP_ID
+YOOKASSA_SECRET_KEY=$YOOKASSA_SECRET_KEY
+
+LOGIN_RATE_LIMIT=$LOGIN_RATE_LIMIT
+REGISTER_RATE_LIMIT=$REGISTER_RATE_LIMIT
+
+CONTACT_EMAIL=$CONTACT_EMAIL
+OPERATOR_NAME=$OPERATOR_NAME
+OPERATOR_STATUS=$OPERATOR_STATUS
+OPERATOR_INN=$OPERATOR_INN
+OPERATOR_ADDRESS=$OPERATOR_ADDRESS
+OPERATOR_EMAIL=$OPERATOR_EMAIL
+DOCS_DATE=$DOCS_DATE
 EOF
 	chmod 600 "$ENV_FILE"
 	ok "записан $ENV_FILE"
@@ -563,7 +597,8 @@ wait_for_https() {
 }
 
 summary() {
-	local scheme=https
+	local scheme=https admin_pass
+	admin_pass=$(env_value ADMIN_PASSWORD || true)
 	[[ $TLS_MODE == off ]] && scheme=http
 
 	printf '\n%s==> Развёртывание завершено%s\n\n' "$C_OK" "$C_RESET"
@@ -572,8 +607,17 @@ summary() {
 	printf '  Секреты:          %s (права 600)\n' "$ENV_FILE"
 	printf '  Конфиг Caddy:     %s\n' "$CADDY_SITE_FILE"
 	printf '  Резервные копии:  %s\n\n' "$BACKUP_DIR"
-	printf '  Регистрация свободная: учитель заводит кабинет сам на странице /register,\n'
-	printf '  логин платформа собирает транслитом и показывает сразу после регистрации.\n\n'
+	printf '  Вход администратора платформы:  %s / %s\n' "$ADMIN_LOGIN" "${admin_pass:-см. .env}"
+	printf '  При первом входе платформа потребует сменить пароль и подключить\n'
+	printf '  второй фактор. Школы заводятся в панели платформы или сами\n'
+	printf '  регистрируются на сайте с двухнедельным пробным периодом.\n\n'
+	if [[ -z $YOOKASSA_SHOP_ID ]]; then
+		printf '  Касса не подключена: оплата работает в учебном режиме.\n'
+		printf '  Ключи магазина задаются в deploy.conf (YOOKASSA_SHOP_ID и\n'
+		printf '  YOOKASSA_SECRET_KEY), адрес уведомлений — %s://%s/api/billing/webhook\n\n' "$scheme" "$DOMAIN"
+	else
+		printf '  Уведомления кассы:  %s://%s/api/billing/webhook\n\n' "$scheme" "$DOMAIN"
+	fi
 	printf '  Логи приложения:  cd %s && docker compose logs -f\n' "$APP_DIR"
 	printf '  Логи Caddy:       journalctl -u caddy -f\n'
 	printf '  Обновление:       sudo %s/deploy.sh\n\n' "$APP_DIR"

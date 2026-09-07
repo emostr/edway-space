@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Header, Param, Post, Req, Res } from '@nestjs/common';
+import { BadRequestException, Controller, ForbiddenException, Get, Header, Param, Post, Req, Res } from '@nestjs/common';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -38,19 +38,58 @@ export class FilesController {
   }
 
   /**
-   * Отдаём файл сами, а не через статику Caddy: каталог загрузок лежит в
-   * приватном томе, и смотреть его должны только вошедшие учителя.
+   * Отдаём файлы сами, а не статикой: каталог загрузок лежит в приватном
+   * томе, и смотреть его вправе только та школа, которой файл принадлежит.
+   * Имя файла — случайный идентификатор, но полагаться на его секретность
+   * нельзя: границу школы проверяем явно.
    */
   @Get('images/:name')
   @Header('Cache-Control', 'private, max-age=86400')
-  image(@Param('name') name: string, @Res() reply: FastifyReply) {
-    return this.send(`images/${name}`, reply);
+  async image(
+    @Param('name') name: string,
+    @CurrentAccount() account: RequestAccount,
+    @Res() reply: FastifyReply,
+  ) {
+    const file = `images/${name}`;
+    const media = await this.prisma.mediaFile.findUnique({ where: { file } });
+    // Картинки, загруженные до появления школ, привязки не имеют — их
+    // отдаём только владельцу.
+    const allowed = media
+      ? media.schoolId
+        ? media.schoolId === account.school?.id
+        : media.ownerId === account.id
+      : false;
+    if (!allowed) {
+      throw new ForbiddenException('Файл принадлежит другой школе');
+    }
+    return this.send(file, reply);
   }
 
   @Get('scans/:name')
   @Header('Cache-Control', 'private, max-age=3600')
-  scan(@Param('name') name: string, @Res() reply: FastifyReply) {
-    return this.send(`scans/${name}`, reply);
+  async scan(
+    @Param('name') name: string,
+    @CurrentAccount() account: RequestAccount,
+    @Res() reply: FastifyReply,
+  ) {
+    const file = `scans/${name}`;
+    const page = await this.prisma.scanPage.findFirst({
+      where: {
+        file,
+        work: { assignment: { schoolId: account.school?.id ?? '', createdById: account.id } },
+      },
+      select: { id: true },
+    });
+
+    if (!page) {
+      // Только что загруженный лист, который не удалось привязать к работе,
+      // ещё не имеет страницы: его показываем тому, кто его и загрузил.
+      const orphan = await this.prisma.scanPage.count({ where: { file } });
+      if (orphan > 0) {
+        throw new ForbiddenException('Скан принадлежит другой работе');
+      }
+    }
+    return this.send(file, reply);
   }
 
   private async send(file: string, reply: FastifyReply) {

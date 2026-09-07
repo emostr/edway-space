@@ -122,3 +122,34 @@ test.describe('Границы школы', () => {
     await other.close();
   });
 });
+
+test.describe('Файлы школы', () => {
+  test('скан работы и картинка задания не отдаются чужой школе', async ({ page, browser }) => {
+    test.slow();
+    await register(page);
+    await dismissToasts(page);
+
+    // Картинка в задание — обычная загрузка из редактора.
+    const image = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const upload = await page.request.post('/api/files/images', {
+      multipart: { file: { name: 'draw.png', mimeType: 'image/png', buffer: image } },
+    });
+    expect(upload.ok(), await upload.text()).toBeTruthy();
+    const url = (await upload.json()).url as string;
+
+    // Своей школе картинка видна.
+    expect((await page.request.get(url)).status()).toBe(200);
+
+    // Чужой — нет, даже если адрес файла известен целиком.
+    const other = await browser.newContext();
+    const otherPage = await other.newPage();
+    await register(otherPage);
+    await dismissToasts(otherPage);
+    expect((await otherPage.request.get(url)).status()).toBe(403);
+
+    await other.close();
+  });
+});

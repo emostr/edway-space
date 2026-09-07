@@ -49,7 +49,8 @@ async function bootstrap(): Promise<void> {
       return;
     }
     if (/\/api\/auth\/login(\/totp)?$/.test(route.url)) {
-      route.config = { ...(route.config ?? {}), rateLimit: { max: 20, timeWindow: '1 minute' } };
+      const max = Number(config.get('LOGIN_RATE_LIMIT', 20));
+      route.config = { ...(route.config ?? {}), rateLimit: { max, timeWindow: '1 minute' } };
     }
     if (/\/api\/(schools\/register|billing\/purchase)$/.test(route.url)) {
       // Регистрация школы — событие редкое, и защищать её надо жёстче входа.

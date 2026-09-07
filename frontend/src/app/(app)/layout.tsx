@@ -113,12 +113,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
 
         <footer className="border-t border-line px-4 sm:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-xs text-faint">
-            edway.space · школьное тестирование ·{' '}
-            <Link href="/download" className="text-muted hover:text-accent transition-colors">
-              приложение для компьютера
-            </Link>
-          </p>
+          <p className="text-xs text-faint">edway.space · школьное тестирование</p>
           <PoweredBy />
         </footer>
       </div>

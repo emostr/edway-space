@@ -3,6 +3,17 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+
+# Публичные настройки вшиваются в сборку: адрес сайта, почта и реквизиты
+# оператора персональных данных попадают в документы и разметку страниц.
+ARG NEXT_PUBLIC_SITE_URL
+ARG NEXT_PUBLIC_CONTACT_EMAIL
+ARG NEXT_PUBLIC_OPERATOR_NAME
+ARG NEXT_PUBLIC_OPERATOR_STATUS
+ARG NEXT_PUBLIC_OPERATOR_INN
+ARG NEXT_PUBLIC_OPERATOR_ADDRESS
+ARG NEXT_PUBLIC_OPERATOR_EMAIL
+ARG NEXT_PUBLIC_DOCS_DATE
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 

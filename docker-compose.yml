@@ -32,12 +32,35 @@ services:
       SESSION_DAYS: ${SESSION_DAYS:-90}
       UPLOAD_DIR: /data/uploads
       OCR_DEBUG_DIR: ${OCR_DEBUG_DIR:-}
+      # Администратор платформы создаётся при первом запуске.
+      ADMIN_LOGIN: ${ADMIN_LOGIN:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      TOTP_ISSUER: ${TOTP_ISSUER:-edway.space}
+      # Стоимость подписки школы на год, в рублях.
+      PRICE_RUB: ${PRICE_RUB:-14900}
+      # Ключи ЮKassa. Пустые — касса работает в учебном режиме: путь оплаты
+      # собирается целиком, но денег не двигает.
+      YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
+      YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
+      # Пороги защиты от перебора и спама.
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-20}
+      REGISTER_RATE_LIMIT: ${REGISTER_RATE_LIMIT:-5}
     volumes:
       # Сканы работ и картинки заданий переживают пересборку образа.
       - uploads:/data/uploads
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_SITE_URL: ${PUBLIC_URL:-http://localhost:8020}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${CONTACT_EMAIL:-hello@edway.space}
+        NEXT_PUBLIC_OPERATOR_NAME: ${OPERATOR_NAME:-}
+        NEXT_PUBLIC_OPERATOR_STATUS: ${OPERATOR_STATUS:-}
+        NEXT_PUBLIC_OPERATOR_INN: ${OPERATOR_INN:-}
+        NEXT_PUBLIC_OPERATOR_ADDRESS: ${OPERATOR_ADDRESS:-}
+        NEXT_PUBLIC_OPERATOR_EMAIL: ${OPERATOR_EMAIL:-}
+        NEXT_PUBLIC_DOCS_DATE: ${DOCS_DATE:-}
     restart: unless-stopped
     depends_on:
       - backend
