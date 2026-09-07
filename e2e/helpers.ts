@@ -112,6 +112,24 @@ export async function register(page: Page): Promise<School> {
   return { name: created.name, login: created.login, password: PASSWORD };
 }
 
+/**
+ * Ввод кода второго фактора. Код живёт 30 секунд, и на загруженной машине
+ * шаг может смениться между генерацией и отправкой — тогда пробуем ещё раз
+ * со свежим кодом, как сделал бы и человек.
+ */
+export async function submitTotp(page: Page, secret: string, label: string): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await fillField(page, page.getByLabel(label), totpCode(secret));
+    await page.getByRole('button', { name: 'Подтвердить' }).click();
+
+    const rejected = page.getByText('Неверный код подтверждения');
+    if (!(await rejected.isVisible({ timeout: 2000 }).catch(() => false))) {
+      return;
+    }
+  }
+  throw new Error('Код второго фактора не принят три раза подряд');
+}
+
 /** Повторный вход существующего сотрудника — уже со вторым фактором. */
 export async function signIn(page: Page, login: string, password: string, secret?: string): Promise<void> {
   await open(page, '/login');
@@ -120,8 +138,7 @@ export async function signIn(page: Page, login: string, password: string, secret
   await page.getByRole('button', { name: 'Войти' }).click();
 
   if (secret) {
-    await fillField(page, page.getByLabel('Код подтверждения'), totpCode(secret));
-    await page.getByRole('button', { name: 'Подтвердить' }).click();
+    await submitTotp(page, secret, 'Код подтверждения');
   }
 }
 
