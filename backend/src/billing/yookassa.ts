@@ -49,6 +49,17 @@ export class YooKassaClient {
     return Boolean(this.shopId && this.secretKey);
   }
 
+  /**
+   * Нужно ли передавать состав чека. Самозанятому касса формирует чек сама —
+   * через привязку к «Мой налог», и лишний состав в запросе она отвергает.
+   * Включать это стоит только магазину, у которого подключено решение по
+   * 54-ФЗ (онлайн-касса).
+   */
+  private get sendsReceipt(): boolean {
+    const value = (this.config.get<string>('YOOKASSA_RECEIPT') ?? '').trim().toLowerCase();
+    return value === 'on' || value === 'true' || value === '1';
+  }
+
   private headers(idempotenceKey: string): Record<string, string> {
     const auth = Buffer.from(`${this.shopId}:${this.secretKey}`).toString('base64');
     return {
@@ -82,9 +93,8 @@ export class YooKassaClient {
       metadata: input.metadata,
     };
 
-    // Чек нужен по 54-ФЗ. Для самозанятого его формирует сама касса —
-    // достаточно передать состав и почту покупателя.
-    if (input.email) {
+    // Состав чека уходит только магазину с онлайн-кассой: см. sendsReceipt.
+    if (this.sendsReceipt && input.email) {
       body.receipt = {
         customer: { email: input.email },
         items: [

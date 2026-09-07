@@ -22,6 +22,9 @@ COPY prisma ./prisma
 COPY prisma.config.ts ./
 COPY --from=build /app/src/generated ./src/generated
 COPY --from=build /app/dist ./dist
+# Служебные команды (восстановление доступа владельца, показательная школа)
+# должны быть под рукой там же, где база: внутри контейнера.
+COPY scripts ./scripts
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 EXPOSE 3000

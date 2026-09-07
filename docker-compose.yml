@@ -42,6 +42,8 @@ services:
       # собирается целиком, но денег не двигает.
       YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
       YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
+      # Состав чека передаём только магазину с онлайн-кассой.
+      YOOKASSA_RECEIPT: ${YOOKASSA_RECEIPT:-off}
       # Пороги защиты от перебора и спама.
       LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-20}
       REGISTER_RATE_LIMIT: ${REGISTER_RATE_LIMIT:-5}
