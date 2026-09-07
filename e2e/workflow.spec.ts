@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { dismissToasts, fillField, freeClass, open, register, stamp } from './helpers';
+import { dismissToasts, fillField, fillOption, freeClass, open, register, stamp } from './helpers';
 
 /**
  * Сквозной путь учителя: класс → тест → назначение → бланки → проверка →
@@ -39,9 +39,8 @@ test('путь от класса до оценки в журнале', async ({ 
   // Первое задание — с одним верным вариантом.
   await page.locator('.ProseMirror').first().click();
   await page.keyboard.type('Сколько будет два плюс два?');
-  const options = page.getByPlaceholder(/^Вариант /);
-  await fillField(page, options.nth(0), '4');
-  await fillField(page, options.nth(1), '5');
+  await fillOption(page, 0, '4');
+  await fillOption(page, 1, '5');
   await page.getByTitle('Отметить верным').first().click();
 
   // Второе — краткий ответ, его платформа сверяет с эталоном.

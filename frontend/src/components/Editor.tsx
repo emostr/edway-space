@@ -16,9 +16,22 @@ interface Props {
   onChange: (html: string) => void;
   placeholder?: string;
   minHeight?: number;
+  /**
+   * Урезанный вид для коротких полей — вариантов ответа. Списки и картинки
+   * в строке варианта ни к чему, а начертание и формула нужны: «выберите
+   * график функции y = x²» без формулы не запишешь.
+   */
+  compact?: boolean;
 }
 
-export function Editor({ value, onChange, placeholder = 'Текст задания…', minHeight = 120 }: Props) {
+export function Editor({
+  value,
+  onChange,
+  placeholder = 'Текст задания…',
+  minHeight,
+  compact = false,
+}: Props) {
+  const height = minHeight ?? (compact ? 40 : 120);
   const [formulaOpen, setFormulaOpen] = useState(false);
   const [formula, setFormula] = useState('');
   const [search, setSearch] = useState('');
@@ -39,8 +52,8 @@ export function Editor({ value, onChange, placeholder = 'Текст задани
     content: value || '',
     editorProps: {
       attributes: {
-        class: 'ng-rich px-3 py-2.5 text-sm text-ink outline-none',
-        style: `min-height:${minHeight}px`,
+        class: `ng-rich text-sm text-ink outline-none ${compact ? 'px-2.5 py-1.5' : 'px-3 py-2.5'}`,
+        style: `min-height:${height}px`,
         'data-placeholder': placeholder,
       },
     },
@@ -119,12 +132,18 @@ export function Editor({ value, onChange, placeholder = 'Текст задани
   }
 
   if (!editor) {
-    return <div className="border border-line bg-surface-2" style={{ minHeight }} />;
+    return <div className="border border-line bg-surface-2" style={{ minHeight: height }} />;
   }
 
   return (
     <div className="border border-line bg-surface-2 focus-within:border-accent transition-colors">
-      <Toolbar editor={editor} onFormula={openFormula} onImage={() => fileInput.current?.click()} busy={uploading} />
+      <Toolbar
+        editor={editor}
+        onFormula={openFormula}
+        onImage={() => fileInput.current?.click()}
+        busy={uploading}
+        compact={compact}
+      />
       <EditorContent editor={editor} />
       <input
         ref={fileInput}
@@ -256,9 +275,10 @@ interface ToolbarProps {
   onFormula: () => void;
   onImage: () => void;
   busy: boolean;
+  compact: boolean;
 }
 
-function Toolbar({ editor, onFormula, onImage, busy }: ToolbarProps) {
+function Toolbar({ editor, onFormula, onImage, busy, compact }: ToolbarProps) {
   const button = (icon: string, title: string, action: () => void, active = false) => (
     <button
       key={title}
@@ -277,29 +297,35 @@ function Toolbar({ editor, onFormula, onImage, busy }: ToolbarProps) {
     <div className="flex flex-wrap items-center gap-0.5 px-1.5 py-1 border-b border-line bg-surface">
       {button('bold', 'Полужирный', () => editor.chain().focus().toggleBold().run(), editor.isActive('bold'))}
       {button('italic', 'Курсив', () => editor.chain().focus().toggleItalic().run(), editor.isActive('italic'))}
-      {button(
-        'list',
-        'Список',
-        () => editor.chain().focus().toggleBulletList().run(),
-        editor.isActive('bulletList'),
-      )}
-      {button(
-        'listOrdered',
-        'Нумерованный список',
-        () => editor.chain().focus().toggleOrderedList().run(),
-        editor.isActive('orderedList'),
+      {compact ? null : (
+        <>
+          {button(
+            'list',
+            'Список',
+            () => editor.chain().focus().toggleBulletList().run(),
+            editor.isActive('bulletList'),
+          )}
+          {button(
+            'listOrdered',
+            'Нумерованный список',
+            () => editor.chain().focus().toggleOrderedList().run(),
+            editor.isActive('orderedList'),
+          )}
+        </>
       )}
       <span className="w-px h-5 bg-line mx-1" />
       {button('sigma', 'Формула (LaTeX)', onFormula, editor.isActive('formula'))}
-      <button
-        type="button"
-        title="Картинка"
-        onClick={onImage}
-        disabled={busy}
-        className="h-8 w-8 flex items-center justify-center text-muted hover:text-ink hover:bg-surface-3 transition-colors cursor-pointer disabled:opacity-40"
-      >
-        <Icon name={busy ? 'refresh' : 'image'} size={16} className={busy ? 'animate-spin' : ''} />
-      </button>
+      {compact ? null : (
+        <button
+          type="button"
+          title="Картинка"
+          onClick={onImage}
+          disabled={busy}
+          className="h-8 w-8 flex items-center justify-center text-muted hover:text-ink hover:bg-surface-3 transition-colors cursor-pointer disabled:opacity-40"
+        >
+          <Icon name={busy ? 'refresh' : 'image'} size={16} className={busy ? 'animate-spin' : ''} />
+        </button>
+      )}
       <span className="flex-1" />
       {button('refresh', 'Очистить форматирование', () =>
         editor.chain().focus().unsetAllMarks().clearNodes().run(),

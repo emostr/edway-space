@@ -3,6 +3,7 @@ import {
   PASSWORD,
   dismissToasts,
   fillField,
+  fillOption,
   freeClass,
   open,
   register,
@@ -63,13 +64,13 @@ test('обход разделов со снимками', async ({ page }) => {
   await fillField(page, page.getByLabel(/^Название/), 'Показательный тест');
   await page.locator('.ProseMirror').first().click();
   await page.keyboard.type('Найдите значение выражения ');
-  await page.getByTitle('Формула (LaTeX)').click();
+  await page.getByTitle('Формула (LaTeX)').first().click();
   await fillField(page, page.getByLabel('Формула'), '\\frac{3}{4} + \\sqrt{16}');
   await page.waitForTimeout(200);
   await shot('04-formula-editor');
   await page.getByRole('button', { name: 'Вставить' }).click();
-  await page.getByPlaceholder(/^Вариант А/).fill('4,75');
-  await page.getByPlaceholder(/^Вариант Б/).fill('5,25');
+  await fillOption(page, 0, '4,75');
+  await fillOption(page, 1, '5,25');
   await page.getByTitle('Отметить верным').first().click();
   await shot('05-test-builder');
 

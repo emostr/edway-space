@@ -14,7 +14,7 @@ test('все заготовки формул рисуются в предпро�
 
   await open(page, '/tests/new');
   await page.locator('.ProseMirror').first().click();
-  await page.getByTitle('Формула (LaTeX)').click();
+  await page.getByTitle('Формула (LaTeX)').first().click();
 
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByLabel('Формула')).toBeVisible();

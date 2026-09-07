@@ -42,6 +42,18 @@ export async function open(page: Page, path: string): Promise<void> {
 /**
  * Заполняет поле и убеждается, что значение осело в состоянии React.
  */
+/**
+ * Вариант ответа набирается в том же визуальном редакторе, что и текст
+ * задания: обычным fill его не заполнить — это не поле ввода.
+ */
+export async function fillOption(page: Page, index: number, text: string): Promise<void> {
+  const editor = page.locator(`[data-option="${index}"] .ProseMirror`);
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type(text);
+  await expect(editor).toContainText(text);
+}
+
 export async function fillField(page: Page, locator: Locator, value: string): Promise<void> {
   await expect(async () => {
     await locator.fill(value);

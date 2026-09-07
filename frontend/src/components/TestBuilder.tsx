@@ -428,12 +428,12 @@ function QuestionCard({
                 {question.options.map((option, optionIndex) => {
                   const correct = (key.correct ?? []).includes(option.id);
                   return (
-                    <div key={option.id} className="flex items-center gap-2">
+                    <div key={option.id} className="flex items-start gap-2">
                       <button
                         type="button"
                         title={correct ? 'Верный ответ' : 'Отметить верным'}
                         onClick={() => toggleCorrect(option.id)}
-                        className={`w-9 h-11 shrink-0 border flex items-center justify-center font-extrabold text-sm transition-colors cursor-pointer ${
+                        className={`w-9 h-[74px] shrink-0 border flex items-center justify-center font-extrabold text-sm transition-colors cursor-pointer ${
                           correct
                             ? 'bg-accent border-accent text-on-accent'
                             : 'bg-surface-2 border-line text-muted hover:border-accent'
@@ -441,17 +441,19 @@ function QuestionCard({
                       >
                         {OPTION_LETTERS[optionIndex] ?? optionIndex + 1}
                       </button>
-                      <Input
-                        value={option.content}
-                        onChange={(value) => setOption(option.id, value)}
-                        placeholder={`Вариант ${OPTION_LETTERS[optionIndex] ?? optionIndex + 1}`}
-                        className="flex-1"
-                      />
+                      <div className="flex-1 min-w-0" data-option={optionIndex}>
+                        <Editor
+                          compact
+                          value={option.content}
+                          onChange={(html) => setOption(option.id, html)}
+                          placeholder={`Вариант ${OPTION_LETTERS[optionIndex] ?? optionIndex + 1}`}
+                        />
+                      </div>
                       <button
                         type="button"
                         title="Убрать вариант"
                         onClick={() => removeOption(option.id)}
-                        className="h-11 w-9 shrink-0 flex items-center justify-center text-muted hover:text-danger cursor-pointer"
+                        className="h-[74px] w-9 shrink-0 flex items-center justify-center text-muted hover:text-danger cursor-pointer"
                       >
                         <Icon name="minus" size={16} />
                       </button>

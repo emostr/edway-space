@@ -3,6 +3,7 @@ import { Prisma } from '../generated/prisma/client';
 import { QuestionType } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { htmlToText } from '../common/text';
+import { sanitizeRich } from '../common/html';
 import { AnswerKey, OPTION_LETTERS, SnapshotQuestion, TestSnapshot, cellsFor, maxScoreFor } from './scoring';
 import { QuestionInput, SaveTestDto } from './dto/tests.dto';
 
@@ -145,6 +146,22 @@ export class TestsService {
     return test;
   }
 
+  /**
+   * Разметка приходит из редактора в браузере, то есть от того, кто мог его
+   * и обойти. Чистим её один раз здесь — и в базу, и в снимки заданий
+   * попадает уже проверенный HTML.
+   */
+  private clean(questions: QuestionInput[]): QuestionInput[] {
+    return questions.map((question) => ({
+      ...question,
+      content: sanitizeRich(question.content),
+      options: question.options.map((option) => ({
+        ...option,
+        content: sanitizeRich(option.content),
+      })),
+    }));
+  }
+
   /** Ключи проверки приходят от клиента — сверяем их с вариантами. */
   private validate(questions: QuestionInput[], variantCount: number): void {
     if (!questions.length) {
@@ -194,6 +211,12 @@ export class TestsService {
         if (correct.some((id) => !ids.has(id))) {
           throw new BadRequestException(`Задание ${number}: правильный ответ ссылается на удалённый вариант`);
         }
+        const blank = question.options.findIndex((option) => !htmlToText(option.content));
+        if (blank >= 0) {
+          throw new BadRequestException(
+            `Задание ${number}: вариант ${OPTION_LETTERS[blank] ?? blank + 1} остался пустым`,
+          );
+        }
         if (question.type === 'SINGLE_CHOICE' && correct.length !== 1) {
           throw new BadRequestException(`Задание ${number}: у задания с одним ответом должен быть ровно один ключ`);
         }
@@ -215,7 +238,8 @@ export class TestsService {
 
   async create(schoolId: string, teacherId: string, dto: SaveTestDto) {
     const variantCount = dto.variantCount ?? 1;
-    this.validate(dto.questions, variantCount);
+    const questions = this.clean(dto.questions);
+    this.validate(questions, variantCount);
     const test = await this.prisma.test.create({
       data: {
         title: dto.title.trim(),
@@ -225,7 +249,7 @@ export class TestsService {
         gradeScale: (dto.gradeScale ?? DEFAULT_SCALE) as Prisma.InputJsonValue,
         schoolId,
         ownerId: teacherId,
-        questions: { create: this.questionData(dto.questions, variantCount) },
+        questions: { create: this.questionData(questions, variantCount) },
       },
     });
     return this.detail(test.id, schoolId, teacherId);
@@ -251,7 +275,8 @@ export class TestsService {
   async update(id: string, schoolId: string, teacherId: string, dto: SaveTestDto) {
     await this.requireEditable(id, schoolId, teacherId);
     const variantCount = dto.variantCount ?? 1;
-    this.validate(dto.questions, variantCount);
+    const questions = this.clean(dto.questions);
+    this.validate(questions, variantCount);
 
     await this.prisma.$transaction([
       this.prisma.question.deleteMany({ where: { testId: id } }),
@@ -263,7 +288,7 @@ export class TestsService {
           instructions: (dto.instructions ?? '').trim(),
           variantCount,
           gradeScale: (dto.gradeScale ?? DEFAULT_SCALE) as Prisma.InputJsonValue,
-          questions: { create: this.questionData(dto.questions, variantCount) },
+          questions: { create: this.questionData(questions, variantCount) },
         },
       }),
     ]);
