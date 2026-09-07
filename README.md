@@ -140,6 +140,17 @@ cd /opt/edway && sudo docker compose exec backend npm run admin:reset
 
 Стек состоит из четырёх контейнеров: PostgreSQL, API на NestJS, интерфейс на Next.js и Caddy перед ними — он же отдаёт страницы ошибок. Сканы работ и картинки заданий лежат в отдельном томе `uploads`, а не в базе.
 
+### База от прежней версии
+
+Платформа стала многошкольной, схема базы поменялась целиком, и миграции на старую базу не лягут: контейнер бэкенда будет перезапускаться, а в журнале — отказ `prisma migrate deploy`. Дамп прежней базы `deploy.sh` снимает перед каждым развёртыванием (`APP_DIR/backups`). Когда данные оттуда не нужны:
+
+```bash
+cd /opt/edway
+sudo docker compose down
+sudo docker volume rm edway_pgdata     # имя тома: sudo docker volume ls | grep pgdata
+sudo docker compose up -d
+```
+
 ## Запуск в проде
 
 Развёртывание на Debian автоматизировано скриптом `deploy.sh`:
