@@ -59,10 +59,11 @@ export class WorksService {
     private readonly ocr: OcrService,
   ) {}
 
-  private async loadWork(id: string, teacherId: string) {
+  private async loadWork(id: string, schoolId: string, teacherId: string) {
     const work = await this.prisma.work.findFirst({
-      // Работа принадлежит тому, кто проводил: чужую не откроешь даже по ссылке.
-      where: { id, assignment: { createdById: teacherId } },
+      // Работа принадлежит тому, кто проводил, и лежит в его школе: чужую
+      // не откроешь даже по прямой ссылке.
+      where: { id, assignment: { schoolId, createdById: teacherId } },
       include: {
         pages: { orderBy: { index: 'asc' } },
         student: { select: { id: true, lastName: true, firstName: true } },
@@ -127,11 +128,12 @@ export class WorksService {
    */
   async upload(
     assignmentId: string,
+    schoolId: string,
     teacherId: string,
     files: { buffer: Buffer; mimetype: string }[],
   ): Promise<UploadOutcome> {
     const assignment = await this.prisma.assignment.findFirst({
-      where: { id: assignmentId, createdById: teacherId },
+      where: { id: assignmentId, schoolId, createdById: teacherId },
       include: { works: { select: { id: true, code: true, studentName: true, variant: true } } },
     });
     if (!assignment) {
@@ -347,8 +349,8 @@ export class WorksService {
     });
   }
 
-  async detail(id: string, teacherId: string) {
-    const work = await this.loadWork(id, teacherId);
+  async detail(id: string, schoolId: string, teacherId: string) {
+    const work = await this.loadWork(id, schoolId, teacherId);
     const snapshot = this.snapshotOf(work.assignment);
     const questions = this.questionsOf(snapshot, work.variant);
     const answers = this.fill(work.answers as unknown as WorkAnswer[], snapshot, work.variant);
@@ -394,8 +396,8 @@ export class WorksService {
   }
 
   /** Правка одного ответа: и текст с бланка, и вердикт, и баллы. */
-  async updateAnswer(id: string, teacherId: string, dto: UpdateAnswerDto) {
-    const work = await this.loadWork(id, teacherId);
+  async updateAnswer(id: string, schoolId: string, teacherId: string, dto: UpdateAnswerDto) {
+    const work = await this.loadWork(id, schoolId, teacherId);
     const snapshot = this.snapshotOf(work.assignment);
     const question = this.questionsOf(snapshot, work.variant).find((q) => q.id === dto.questionId);
     if (!question) {
@@ -439,12 +441,12 @@ export class WorksService {
       data: { answers: answers as unknown as Prisma.InputJsonValue },
     });
     await this.rescore(id);
-    return this.detail(id, teacherId);
+    return this.detail(id, schoolId, teacherId);
   }
 
   /** Завершение проверки: оценка уходит в журнал. */
-  async finalize(id: string, teacherId: string) {
-    const work = await this.loadWork(id, teacherId);
+  async finalize(id: string, schoolId: string, teacherId: string) {
+    const work = await this.loadWork(id, schoolId, teacherId);
     const snapshot = this.snapshotOf(work.assignment);
     const answers = this.fill(work.answers as unknown as WorkAnswer[], snapshot, work.variant);
 
@@ -469,20 +471,20 @@ export class WorksService {
         checkedById: teacherId,
       },
     });
-    return this.detail(id, teacherId);
+    return this.detail(id, schoolId, teacherId);
   }
 
-  async reopen(id: string, teacherId: string) {
+  async reopen(id: string, schoolId: string, teacherId: string) {
     await this.prisma.work.update({
       where: { id },
       data: { status: 'NEEDS_REVIEW', checkedAt: null, checkedById: null, grade: null },
     });
-    return this.rescore(id).then(() => this.detail(id, teacherId));
+    return this.rescore(id).then(() => this.detail(id, schoolId, teacherId));
   }
 
   /** Привязать запасной бланк к ученику. */
-  async assignStudent(id: string, teacherId: string, studentId?: string, studentName?: string) {
-    const work = await this.loadWork(id, teacherId);
+  async assignStudent(id: string, schoolId: string, teacherId: string, studentId?: string, studentName?: string) {
+    const work = await this.loadWork(id, schoolId, teacherId);
     if (studentId) {
       const student = await this.prisma.student.findFirst({
         where: { id: studentId, classId: work.assignment.classId },
@@ -500,12 +502,12 @@ export class WorksService {
         data: { studentId: null, studentName: (studentName ?? '').trim() },
       });
     }
-    return this.detail(id, teacherId);
+    return this.detail(id, schoolId, teacherId);
   }
 
   /** Ручная привязка листа, у которого не прочитался код. */
-  async attachExisting(id: string, teacherId: string, file: string, pageIndex = 0) {
-    const work = await this.loadWork(id, teacherId);
+  async attachExisting(id: string, schoolId: string, teacherId: string, file: string, pageIndex = 0) {
+    const work = await this.loadWork(id, schoolId, teacherId);
     if (!(await this.storage.exists(file))) {
       throw new NotFoundException('Файл скана не найден');
     }
@@ -521,22 +523,22 @@ export class WorksService {
       // скан всё равно останется прикреплённым.
     }
     await this.rescore(id);
-    return this.detail(id, teacherId);
+    return this.detail(id, schoolId, teacherId);
   }
 
-  async removePage(id: string, teacherId: string, pageId: string) {
+  async removePage(id: string, schoolId: string, teacherId: string, pageId: string) {
     const page = await this.prisma.scanPage.findFirst({ where: { id: pageId, workId: id } });
     if (!page) {
       throw new NotFoundException('Страница не найдена');
     }
     await this.storage.remove(page.file);
     await this.prisma.scanPage.delete({ where: { id: pageId } });
-    return this.detail(id, teacherId);
+    return this.detail(id, schoolId, teacherId);
   }
 
   /** Полный сброс работы: ученик писал не тот бланк или скан оказался чужим. */
-  async reset(id: string, teacherId: string) {
-    await this.loadWork(id, teacherId);
+  async reset(id: string, schoolId: string, teacherId: string) {
+    await this.loadWork(id, schoolId, teacherId);
     const pages = await this.prisma.scanPage.findMany({ where: { workId: id } });
     for (const page of pages) {
       await this.storage.remove(page.file);
@@ -558,6 +560,6 @@ export class WorksService {
         },
       }),
     ]);
-    return this.detail(id, teacherId);
+    return this.detail(id, schoolId, teacherId);
   }
 }

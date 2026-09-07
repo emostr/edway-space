@@ -4,13 +4,14 @@ import { JwtService } from '@nestjs/jwt';
 import { FastifyRequest } from 'fastify';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import { RequestTeacher, SESSION_COOKIE, SessionPayload } from '../types';
+import { RequestAccount, RequestSchool, SESSION_COOKIE, SessionPayload } from '../types';
+import { daysUntil, effectiveStatus } from '../subscription';
 
 // lastSeenAt пишем не чаще раза в минуту — иначе каждый запрос дашборда
 // превращается в UPDATE.
 const TOUCH_INTERVAL_MS = 60_000;
 
-type AuthedRequest = FastifyRequest & { teacher?: RequestTeacher };
+type AuthedRequest = FastifyRequest & { account?: RequestAccount };
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -44,7 +45,7 @@ export class AuthGuard implements CanActivate {
 
     const session = await this.prisma.authSession.findUnique({
       where: { id: payload.sid },
-      include: { teacher: true },
+      include: { account: { include: { school: true } } },
     });
 
     const now = new Date();
@@ -52,17 +53,38 @@ export class AuthGuard implements CanActivate {
       !session ||
       session.revokedAt ||
       session.expiresAt < now ||
-      session.teacher.deletedAt ||
-      session.teacherId !== payload.sub
+      session.account.deletedAt ||
+      session.accountId !== payload.sub
     ) {
       throw new UnauthorizedException('Сессия завершена');
     }
 
-    request.teacher = {
-      id: session.teacher.id,
-      login: session.teacher.login,
-      fullName: session.teacher.fullName,
+    const account = session.account;
+    // Школу закрыли из панели платформы — сессии её сотрудников больше не живут.
+    if (account.school?.deletedAt) {
+      throw new UnauthorizedException('Школа отключена от платформы');
+    }
+
+    const school: RequestSchool | null = account.school
+      ? {
+          id: account.school.id,
+          name: account.school.name,
+          slug: account.school.slug,
+          status: effectiveStatus(account.school),
+          paidUntil: account.school.paidUntil,
+          daysLeft: daysUntil(account.school.paidUntil),
+        }
+      : null;
+
+    request.account = {
+      id: account.id,
+      login: account.login,
+      fullName: account.fullName,
+      role: account.role,
       sessionId: session.id,
+      mustChangePassword: account.mustChangePassword,
+      totpEnabled: account.totpEnabled,
+      school,
     };
 
     if (now.getTime() - session.lastSeenAt.getTime() > TOUCH_INTERVAL_MS) {

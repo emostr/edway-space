@@ -40,12 +40,19 @@ async function bootstrap(): Promise<void> {
     keyGenerator: (request) => request.ip,
   });
 
-  // Вход и регистрацию прикрываем от перебора отдельно: остальной API
-  // работает без ограничений, чтобы загрузка пачки сканов не упиралась в лимит.
+  // Вход, регистрацию школы и оформление оплаты прикрываем от перебора и
+  // спама отдельно: остальной API работает без ограничений, чтобы загрузка
+  // пачки сканов не упиралась в лимит.
   const instance = app.getHttpAdapter().getInstance();
   instance.addHook('onRoute', (route) => {
-    if (typeof route.url === 'string' && /\/api\/auth\/(login|register)$/.test(route.url)) {
+    if (typeof route.url !== 'string') {
+      return;
+    }
+    if (/\/api\/auth\/login(\/totp)?$/.test(route.url)) {
       route.config = { ...(route.config ?? {}), rateLimit: { max: 20, timeWindow: '1 minute' } };
+    }
+    if (/\/api\/(schools\/register|billing\/purchase)$/.test(route.url)) {
+      route.config = { ...(route.config ?? {}), rateLimit: { max: 5, timeWindow: '10 minutes' } };
     }
   });
 

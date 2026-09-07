@@ -2,8 +2,8 @@ import { BadRequestException, Controller, Get, Header, Param, Post, Req, Res } f
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { CurrentTeacher } from '../common/decorators/current-teacher.decorator';
-import { RequestTeacher } from '../common/types';
+import { CurrentAccount } from '../common/decorators/current-account.decorator';
+import { RequestAccount } from '../common/types';
 
 @Controller('files')
 export class FilesController {
@@ -14,7 +14,7 @@ export class FilesController {
 
   /** Загрузка картинки из визуального редактора: чертежи, графики, схемы. */
   @Post('images')
-  async uploadImage(@Req() req: FastifyRequest, @CurrentTeacher() teacher: RequestTeacher) {
+  async uploadImage(@Req() req: FastifyRequest, @CurrentAccount() account: RequestAccount) {
     const part = await req.file();
     if (!part) {
       throw new BadRequestException('Файл не передан');
@@ -28,7 +28,8 @@ export class FilesController {
         width: stored.width,
         height: stored.height,
         size: stored.size,
-        ownerId: teacher.id,
+        schoolId: account.school?.id ?? null,
+        ownerId: account.id,
       },
     });
     return { url: `/api/files/${stored.file}`, width: stored.width, height: stored.height };

@@ -1,19 +1,19 @@
 import { Controller, Get, Param } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
-import { CurrentTeacher } from '../common/decorators/current-teacher.decorator';
-import { RequestTeacher } from '../common/types';
+import { CurrentAccount } from '../common/decorators/current-account.decorator';
+import { RequestAccount } from '../common/types';
 
 @Controller('analytics')
 export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}
 
   @Get('overview')
-  overview(@CurrentTeacher() teacher: RequestTeacher) {
-    return this.analytics.overview(teacher.id);
+  overview(@CurrentAccount() account: RequestAccount) {
+    return this.analytics.overview(account.school?.id ?? '', account.id);
   }
 
   @Get('assignments/:id')
-  assignment(@Param('id') id: string, @CurrentTeacher() teacher: RequestTeacher) {
-    return this.analytics.assignmentReport(id, teacher.id);
+  assignment(@Param('id') id: string, @CurrentAccount() account: RequestAccount) {
+    return this.analytics.assignmentReport(id, account.school?.id ?? '', account.id);
   }
 }

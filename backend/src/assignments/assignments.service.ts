@@ -73,8 +73,13 @@ export class AssignmentsService {
     works: { select: { status: true } },
   } satisfies Prisma.AssignmentInclude;
 
-  async list(teacherId: string, filters: { classId?: string; testId?: string; from?: string; to?: string }) {
+  async list(
+    schoolId: string,
+    teacherId: string,
+    filters: { classId?: string; testId?: string; from?: string; to?: string },
+  ) {
     const where: Prisma.AssignmentWhereInput = {
+      schoolId,
       // Работы класса — личное дело того, кто проводил: чужие назначения
       // в списке не появляются, даже если тест общий.
       createdById: teacherId,
@@ -103,10 +108,11 @@ export class AssignmentsService {
    * запасные. Снимок теста замораживается — правка теста задним числом
    * не должна менять уже написанную работу.
    */
-  async create(dto: CreateAssignmentDto, teacherId: string) {
+  async create(schoolId: string, dto: CreateAssignmentDto, teacherId: string) {
     const test = await this.prisma.test.findFirst({
       where: {
         id: dto.testId,
+        schoolId,
         deletedAt: null,
         OR: [{ ownerId: teacherId }, { shares: { some: { teacherId } } }],
       },
@@ -119,7 +125,7 @@ export class AssignmentsService {
     }
 
     const schoolClass = await this.prisma.schoolClass.findFirst({
-      where: { id: dto.classId, archivedAt: null },
+      where: { id: dto.classId, schoolId, archivedAt: null },
       include: {
         students: { where: { archivedAt: null }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] },
       },
@@ -139,7 +145,7 @@ export class AssignmentsService {
       throw new BadRequestException('Этот тест уже назначен классу на эту дату');
     }
 
-    const snapshot = await this.tests.snapshot(dto.testId);
+    const snapshot = await this.tests.snapshot(dto.testId, schoolId);
     const spare = dto.spare ?? 2;
     const variants = Math.max(1, snapshot.variantCount ?? 1);
     // Варианты раздаются по списку класса подряд: соседи по парте получают
@@ -148,6 +154,7 @@ export class AssignmentsService {
 
     const assignment = await this.prisma.assignment.create({
       data: {
+        schoolId,
         testId: dto.testId,
         classId: dto.classId,
         date,
@@ -178,9 +185,9 @@ export class AssignmentsService {
     return this.toRow(assignment);
   }
 
-  async detail(id: string, teacherId: string) {
+  async detail(id: string, schoolId: string, teacherId: string) {
     const assignment = await this.prisma.assignment.findFirst({
-      where: { id, createdById: teacherId },
+      where: { id, schoolId, createdById: teacherId },
       include: {
         ...this.include,
         works: {
@@ -230,9 +237,9 @@ export class AssignmentsService {
   }
 
   /** Разметка бланков для печати: одна и та же геометрия у принтера и у OCR. */
-  async sheets(id: string, teacherId: string) {
+  async sheets(id: string, schoolId: string, teacherId: string) {
     const assignment = await this.prisma.assignment.findFirst({
-      where: { id, createdById: teacherId },
+      where: { id, schoolId, createdById: teacherId },
       include: {
         test: { select: { title: true } },
         class: { select: { number: true, letter: true } },
@@ -272,8 +279,8 @@ export class AssignmentsService {
     };
   }
 
-  async update(id: string, teacherId: string, data: { date?: string; note?: string }) {
-    await this.mine(id, teacherId);
+  async update(id: string, schoolId: string, teacherId: string, data: { date?: string; note?: string }) {
+    await this.mine(id, schoolId, teacherId);
     const updated = await this.prisma.assignment.update({
       where: { id },
       data: {
@@ -286,8 +293,8 @@ export class AssignmentsService {
   }
 
   /** Добавить бланк: пришёл новенький или лист испортили. */
-  async addSpare(id: string, teacherId: string, studentId?: string, variant?: number) {
-    const assignment = await this.mine(id, teacherId);
+  async addSpare(id: string, schoolId: string, teacherId: string, studentId?: string, variant?: number) {
+    const assignment = await this.mine(id, schoolId, teacherId);
     const snapshot = assignment.snapshot as unknown as TestSnapshot;
     const student = studentId
       ? await this.prisma.student.findUnique({ where: { id: studentId } })
@@ -311,8 +318,8 @@ export class AssignmentsService {
   }
 
   /** Сменить вариант у бланка: пригодится, если ученик сел не за свою парту. */
-  async setVariant(id: string, teacherId: string, workId: string, variant: number) {
-    const assignment = await this.mine(id, teacherId);
+  async setVariant(id: string, schoolId: string, teacherId: string, workId: string, variant: number) {
+    const assignment = await this.mine(id, schoolId, teacherId);
     const snapshot = assignment.snapshot as unknown as TestSnapshot;
     const variants = Math.max(1, snapshot.variantCount ?? 1);
     if (variant < 1 || variant > variants) {
@@ -334,8 +341,8 @@ export class AssignmentsService {
     return { ok: true };
   }
 
-  async setClosed(id: string, teacherId: string, closed: boolean) {
-    await this.mine(id, teacherId);
+  async setClosed(id: string, schoolId: string, teacherId: string, closed: boolean) {
+    await this.mine(id, schoolId, teacherId);
     const assignment = await this.prisma.assignment.update({
       where: { id },
       data: { closedAt: closed ? new Date() : null },
@@ -344,15 +351,17 @@ export class AssignmentsService {
     return this.toRow(assignment);
   }
 
-  async remove(id: string, teacherId: string) {
-    await this.mine(id, teacherId);
+  async remove(id: string, schoolId: string, teacherId: string) {
+    await this.mine(id, schoolId, teacherId);
     await this.prisma.assignment.delete({ where: { id } });
     return { ok: true };
   }
 
-  /** Назначение существует и принадлежит этому учителю. */
-  private async mine(id: string, teacherId: string) {
-    const assignment = await this.prisma.assignment.findFirst({ where: { id, createdById: teacherId } });
+  /** Назначение существует, лежит в этой школе и принадлежит этому учителю. */
+  private async mine(id: string, schoolId: string, teacherId: string) {
+    const assignment = await this.prisma.assignment.findFirst({
+      where: { id, schoolId, createdById: teacherId },
+    });
     if (!assignment) {
       throw new NotFoundException('Назначение не найдено');
     }

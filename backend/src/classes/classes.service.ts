@@ -18,9 +18,9 @@ export interface ClassRow {
 export class ClassesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(includeArchived = false): Promise<ClassRow[]> {
+  async list(schoolId: string, includeArchived = false): Promise<ClassRow[]> {
     const rows = await this.prisma.schoolClass.findMany({
-      where: includeArchived ? {} : { archivedAt: null },
+      where: { schoolId, ...(includeArchived ? {} : { archivedAt: null }) },
       orderBy: [{ number: 'asc' }, { letter: 'asc' }],
       include: {
         _count: { select: { students: true, assignments: true } },
@@ -38,15 +38,15 @@ export class ClassesService {
     }));
   }
 
-  async create(dto: CreateClassDto, teacherId: string): Promise<ClassRow> {
+  async create(schoolId: string, dto: CreateClassDto, teacherId: string): Promise<ClassRow> {
     const exists = await this.prisma.schoolClass.findFirst({
-      where: { number: dto.number, letter: dto.letter, archiveKey: '' },
+      where: { schoolId, number: dto.number, letter: dto.letter, archiveKey: '' },
     });
     if (exists) {
       throw new BadRequestException(`Класс ${className(dto.number, dto.letter)} уже заведён`);
     }
     const created = await this.prisma.schoolClass.create({
-      data: { number: dto.number, letter: dto.letter, createdById: teacherId },
+      data: { schoolId, number: dto.number, letter: dto.letter, createdById: teacherId },
       include: { _count: { select: { students: true, assignments: true } } },
     });
     return {
@@ -61,9 +61,9 @@ export class ClassesService {
     };
   }
 
-  async detail(id: string) {
-    const row = await this.prisma.schoolClass.findUnique({
-      where: { id },
+  async detail(schoolId: string, id: string) {
+    const row = await this.prisma.schoolClass.findFirst({
+      where: { id, schoolId },
       include: {
         students: {
           where: { archivedAt: null },
@@ -95,8 +95,8 @@ export class ClassesService {
    * по нормализованному ключу «фамилияимя», лишних заводим, пропавших
    * убираем в архив (их работы остаются в журнале оценок).
    */
-  async replaceStudents(classId: string, students: StudentInput[]) {
-    const target = await this.prisma.schoolClass.findUnique({ where: { id: classId } });
+  async replaceStudents(schoolId: string, classId: string, students: StudentInput[]) {
+    const target = await this.prisma.schoolClass.findFirst({ where: { id: classId, schoolId } });
     if (!target) {
       throw new NotFoundException('Класс не найден');
     }
@@ -165,8 +165,10 @@ export class ClassesService {
     };
   }
 
-  async updateStudent(studentId: string, lastName?: string, firstName?: string) {
-    const student = await this.prisma.student.findUnique({ where: { id: studentId } });
+  async updateStudent(schoolId: string, studentId: string, lastName?: string, firstName?: string) {
+    const student = await this.prisma.student.findFirst({
+      where: { id: studentId, class: { schoolId } },
+    });
     if (!student) {
       throw new NotFoundException('Ученик не найден');
     }
@@ -183,7 +185,13 @@ export class ClassesService {
     return { ok: true };
   }
 
-  async removeStudent(studentId: string) {
+  async removeStudent(schoolId: string, studentId: string) {
+    const student = await this.prisma.student.findFirst({
+      where: { id: studentId, class: { schoolId } },
+    });
+    if (!student) {
+      throw new NotFoundException('Ученик не найден');
+    }
     const works = await this.prisma.work.count({ where: { studentId } });
     if (works > 0) {
       // Работы ученика уже в журнале — карточку прячем, а не стираем.
@@ -199,8 +207,8 @@ export class ClassesService {
    * уходит в архив вместе со своей историей, а ученики переезжают в новую —
    * прошлогодний срез 7Б так и остаётся срезом 7Б.
    */
-  async promote(classId: string, number?: number, letter?: string) {
-    const source = await this.prisma.schoolClass.findUnique({ where: { id: classId } });
+  async promote(schoolId: string, classId: string, number?: number, letter?: string) {
+    const source = await this.prisma.schoolClass.findFirst({ where: { id: classId, schoolId } });
     if (!source) {
       throw new NotFoundException('Класс не найден');
     }
@@ -215,7 +223,7 @@ export class ClassesService {
     }
 
     const occupied = await this.prisma.schoolClass.findFirst({
-      where: { number: nextNumber, letter: nextLetter, archiveKey: '' },
+      where: { schoolId, number: nextNumber, letter: nextLetter, archiveKey: '' },
     });
     if (occupied && occupied.id !== classId) {
       throw new BadRequestException(`Класс ${className(nextNumber, nextLetter)} уже существует`);
@@ -233,7 +241,7 @@ export class ClassesService {
 
     await this.prisma.$transaction(async (tx) => {
       const created = await tx.schoolClass.create({
-        data: { number: nextNumber, letter: nextLetter, createdById: source.createdById },
+        data: { schoolId, number: nextNumber, letter: nextLetter, createdById: source.createdById },
       });
       await tx.student.updateMany({ where: { classId, archivedAt: null }, data: { classId: created.id } });
       await tx.schoolClass.update({
@@ -253,9 +261,9 @@ export class ClassesService {
   }
 
   /** Одной кнопкой поднимаем всю школу на следующий учебный год. */
-  async promoteAll() {
+  async promoteAll(schoolId: string) {
     const classes = await this.prisma.schoolClass.findMany({
-      where: { archivedAt: null },
+      where: { schoolId, archivedAt: null },
       orderBy: { number: 'desc' },
     });
     let promoted = 0;
@@ -265,14 +273,18 @@ export class ClassesService {
         await this.archive(item.id);
         graduated += 1;
       } else {
-        await this.promote(item.id);
+        await this.promote(schoolId, item.id);
         promoted += 1;
       }
     }
     return { promoted, graduated };
   }
 
-  async remove(classId: string) {
+  async remove(schoolId: string, classId: string) {
+    const target = await this.prisma.schoolClass.findFirst({ where: { id: classId, schoolId } });
+    if (!target) {
+      throw new NotFoundException('Класс не найден');
+    }
     const assignments = await this.prisma.assignment.count({ where: { classId } });
     if (assignments > 0) {
       return this.archive(classId);

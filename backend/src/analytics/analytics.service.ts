@@ -9,22 +9,26 @@ export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Сводка для обзорной страницы: что у учителя происходит прямо сейчас. */
-  async overview(teacherId: string) {
+  async overview(schoolId: string, teacherId: string) {
     const since = new Date(Date.now() - 30 * DAY_MS);
 
     const [tests, classes, assignments, works, checkedWorks, recentAssignments] = await Promise.all([
       this.prisma.test.count({
-        where: { deletedAt: null, OR: [{ ownerId: teacherId }, { shares: { some: { teacherId } } }] },
+        where: {
+          schoolId,
+          deletedAt: null,
+          OR: [{ ownerId: teacherId }, { shares: { some: { teacherId } } }],
+        },
       }),
-      this.prisma.schoolClass.count({ where: { archivedAt: null } }),
-      this.prisma.assignment.count({ where: { createdById: teacherId } }),
-      this.prisma.work.count({ where: { assignment: { createdById: teacherId } } }),
+      this.prisma.schoolClass.count({ where: { schoolId, archivedAt: null } }),
+      this.prisma.assignment.count({ where: { schoolId, createdById: teacherId } }),
+      this.prisma.work.count({ where: { assignment: { schoolId, createdById: teacherId } } }),
       this.prisma.work.findMany({
-        where: { status: 'CHECKED', assignment: { createdById: teacherId } },
+        where: { status: 'CHECKED', assignment: { schoolId, createdById: teacherId } },
         select: { grade: true, percent: true, checkedAt: true },
       }),
       this.prisma.assignment.findMany({
-        where: { createdById: teacherId },
+        where: { schoolId, createdById: teacherId },
         orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
         take: 8,
         include: {
@@ -61,7 +65,7 @@ export class AnalyticsService {
     const pendingWorks = await this.prisma.work.count({
       where: {
         status: { in: ['RECOGNIZED', 'NEEDS_REVIEW'] },
-        assignment: { createdById: teacherId },
+        assignment: { schoolId, createdById: teacherId },
       },
     });
 
@@ -91,9 +95,9 @@ export class AnalyticsService {
   }
 
   /** Разбор одного назначения: по заданиям видно, что класс не понял. */
-  async assignmentReport(assignmentId: string, teacherId: string) {
+  async assignmentReport(assignmentId: string, schoolId: string, teacherId: string) {
     const assignment = await this.prisma.assignment.findFirst({
-      where: { id: assignmentId, createdById: teacherId },
+      where: { id: assignmentId, schoolId, createdById: teacherId },
       include: {
         test: { select: { title: true } },
         class: { select: { number: true, letter: true } },

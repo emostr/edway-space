@@ -9,38 +9,120 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─── Учётные записи ────────────────────────────────────────────────────────
-// Платформа селфхостная, школьная: регистрация свободная. Учитель вписывает
-// фамилию и имя, логин собирается транслитом, пароль он задаёт сам.
-// Учеников как пользователей в системе нет — они пишут работы на бумаге.
+// ─── Школы и подписки ──────────────────────────────────────────────────────
+// Платформа обслуживает много школ сразу. Школа — граница всего: классы,
+// тесты, работы и оценки одной школы не видны другой ни при каких условиях.
 
-model Teacher {
-  id           String    @id @default(cuid())
-  login        String    @unique
-  passwordHash String
-  fullName     String
-  // Предмет виден коллегам в списке, с кем можно поделиться тестом.
-  subject      String    @default("")
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+enum SchoolStatus {
+  // Идёт бесплатный период знакомства.
+  TRIAL
+  // Подписка оплачена и действует.
+  ACTIVE
+  // Срок вышел: кабинет открывается только на страницу продления.
+  EXPIRED
+  // Закрыта вручную из панели платформы.
+  BLOCKED
+}
 
-  sessions      AuthSession[]
-  tests         Test[]
-  sharesGiven   TestShare[]   @relation("ShareOwner")
-  sharesGot     TestShare[]   @relation("ShareTarget")
-  assignments    Assignment[]
-  checkedWorks   Work[]
-  createdClasses SchoolClass[]
-  uploads        MediaFile[]
+model School {
+  id        String       @id @default(cuid())
+  // Название, как его пишет директор: «МБОУ СОШ № 12 г. Твери».
+  name      String
+  // Короткий адрес школы внутри платформы, из него собираются ссылки.
+  slug      String       @unique
+  status    SchoolStatus @default(TRIAL)
+  city      String       @default("")
+  // Контакты для счетов и писем о продлении.
+  contactEmail String    @default("")
+  contactPhone String    @default("")
 
+  // Докуда оплачено (или докуда идёт пробный период).
+  paidUntil DateTime
+  // Пометка администратора платформы: кто это и почему заведён вручную.
+  note      String       @default("")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  accounts     Account[]
+  classes      SchoolClass[]
+  tests        Test[]
+  assignments  Assignment[]
+  payments     Payment[]
+  mediaFiles   MediaFile[]
+
+  @@index([status])
+  @@index([paidUntil])
   @@index([deletedAt])
+}
+
+// ─── Учётные записи ────────────────────────────────────────────────────────
+// Свободной регистрации нет. Администратор платформы заводит школы, админ
+// школы — учителей. Ученики учётных записей не имеют: они пишут на бумаге.
+
+enum AccountRole {
+  // Владелец платформы: школы, подписки, платежи. Школы у него нет.
+  PLATFORM_ADMIN
+  // Директор или завуч: учителя своей школы и оплата подписки.
+  SCHOOL_ADMIN
+  // Учитель: классы, тесты, проверка работ.
+  TEACHER
+}
+
+model Account {
+  id       String      @id @default(cuid())
+  login    String      @unique
+  role     AccountRole
+  fullName String
+  subject  String      @default("")
+
+  schoolId String?
+  school   School? @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  passwordHash String
+  // Пока true, дальше экрана смены пароля учётная запись не идёт.
+  mustChangePassword Boolean @default(true)
+  // Временный пароль показывается тому, кто завёл запись, ровно один раз.
+  tempPassword       String?
+
+  // Второй фактор. Для администраторов обязателен, учителю — по желанию.
+  totpSecret  String?
+  totpEnabled Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  sessions     AuthSession[]
+  backupCodes  BackupCode[]
+  tests        Test[]
+  sharesGiven  TestShare[]   @relation("ShareOwner")
+  sharesGot    TestShare[]   @relation("ShareTarget")
+  assignments  Assignment[]
+  checkedWorks Work[]
+  createdClasses SchoolClass[]
+  uploads      MediaFile[]
+
+  @@index([schoolId, role])
+  @@index([deletedAt])
+}
+
+model BackupCode {
+  id        String    @id @default(cuid())
+  accountId String
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([accountId])
 }
 
 model AuthSession {
   id         String    @id @default(cuid())
-  teacherId  String
-  teacher    Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  accountId  String
+  account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   createdAt  DateTime  @default(now())
   expiresAt  DateTime
   lastSeenAt DateTime  @default(now())
@@ -48,21 +130,56 @@ model AuthSession {
   ip         String    @default("")
   revokedAt  DateTime?
 
-  @@index([teacherId])
+  @@index([accountId])
   @@index([expiresAt])
 }
 
+// ─── Оплата ────────────────────────────────────────────────────────────────
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  CANCELED
+}
+
+model Payment {
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  // Идентификатор платежа в ЮKassa.
+  externalId String        @unique
+  status     PaymentStatus @default(PENDING)
+  // Сумма в копейках: в рублях с плавающей точкой деньги считать нельзя.
+  amount     Int
+  currency   String        @default("RUB")
+  // За сколько месяцев платят — обычно за год.
+  months     Int           @default(12)
+  description String       @default("")
+  // Кто платил: почта для чека.
+  payerEmail String        @default("")
+
+  // Ответ платёжной системы целиком — пригодится при разборе спорных случаев.
+  payload Json @default("{}")
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  succeededAt DateTime?
+
+  @@index([schoolId, status])
+  @@index([createdAt])
+}
+
 // ─── Классы и ученики ──────────────────────────────────────────────────────
-// Классы общие для школы: их заводит любой учитель, назначать тесты может
-// каждый. Список учеников нужен, чтобы бланк печатался уже с фамилией —
-// тогда распознавать при проверке остаётся только сами ответы.
 
 model SchoolClass {
   id          String    @id @default(cuid())
+  schoolId    String
+  school      School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   number      Int // 1..11
   letter      String // А..Я
   createdById String?
-  createdBy   Teacher?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   Account?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   archivedAt  DateTime?
@@ -73,9 +190,8 @@ model SchoolClass {
   students    Student[]
   assignments Assignment[]
 
-  @@unique([number, letter, archiveKey])
-  @@index([number])
-  @@index([archivedAt])
+  @@unique([schoolId, number, letter, archiveKey])
+  @@index([schoolId, archivedAt])
 }
 
 model Student {
@@ -105,12 +221,14 @@ enum QuestionType {
   MULTIPLE_CHOICE
   // Короткий ответ: слово, число или формула — по клетке на символ.
   SHORT_ANSWER
-  // Развёрнутый ответ: пишется на обороте, проверяется только вручную.
+  // Развёрнутый ответ: пишется на отдельном листе, проверяется вручную.
   EXTENDED
 }
 
 model Test {
   id           String  @id @default(cuid())
+  schoolId     String
+  school       School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   title        String
   description  String  @default("")
   // Инструкция печатается на бланке и показывается при выдаче.
@@ -122,7 +240,7 @@ model Test {
   variantCount Int     @default(1)
 
   ownerId   String
-  owner     Teacher   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner     Account   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -134,23 +252,21 @@ model Test {
   shares      TestShare[]
   assignments Assignment[]
 
+  @@index([schoolId, deletedAt])
   @@index([ownerId])
-  @@index([deletedAt])
 }
 
 model Question {
-  id     String       @id @default(cuid())
-  testId String
-  test   Test         @relation(fields: [testId], references: [id], onDelete: Cascade)
-  order  Int
+  id      String       @id @default(cuid())
+  testId  String
+  test    Test         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  order   Int
   // 0 — задание идёт во все варианты, 1..N — только в свой.
-  variant Int         @default(0)
-  type   QuestionType
+  variant Int          @default(0)
+  type    QuestionType
   // Текст задания из визуального редактора: HTML с формулами KaTeX.
-  // Формула лежит как <span data-formula="\frac{1}{2}"></span> — так она
-  // переживает и правку в редакторе, и печать бланка.
-  content String      @default("")
-  points  Int         @default(1)
+  content String       @default("")
+  points  Int          @default(1)
 
   // Варианты ответа: [{ id, content }] — порядок задаёт буквы А, Б, В…
   options Json @default("[]")
@@ -165,15 +281,15 @@ model Question {
   @@index([testId, variant])
 }
 
-// Доступ к чужому тесту: владелец делится им с коллегой из списка.
+// Доступ к чужому тесту: владелец делится им с коллегой из своей школы.
 model TestShare {
   id        String   @id @default(cuid())
   testId    String
   test      Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
   ownerId   String
-  owner     Teacher  @relation("ShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner     Account  @relation("ShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   teacherId String
-  teacher   Teacher  @relation("ShareTarget", fields: [teacherId], references: [id], onDelete: Cascade)
+  teacher   Account  @relation("ShareTarget", fields: [teacherId], references: [id], onDelete: Cascade)
   // false — коллега только смотрит и назначает, true — ещё и правит.
   canEdit   Boolean  @default(false)
   createdAt DateTime @default(now())
@@ -183,10 +299,11 @@ model TestShare {
 }
 
 // ─── Назначения ────────────────────────────────────────────────────────────
-// Назначение = этот тест, этому классу, на эту дату. Оно же — пачка бланков.
 
 model Assignment {
   id          String      @id @default(cuid())
+  schoolId    String
+  school      School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   testId      String
   test        Test        @relation(fields: [testId], references: [id], onDelete: Cascade)
   classId     String
@@ -194,7 +311,7 @@ model Assignment {
   date        DateTime    @db.Date
   note        String      @default("")
   createdById String
-  createdBy   Teacher     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy   Account     @relation(fields: [createdById], references: [id], onDelete: Cascade)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   // Проверка завершена: оценки выставлены и попали в журнал.
@@ -207,8 +324,8 @@ model Assignment {
   works Work[]
 
   @@unique([testId, classId, date])
+  @@index([schoolId, date])
   @@index([classId, date])
-  @@index([date])
 }
 
 // ─── Работы ────────────────────────────────────────────────────────────────
@@ -238,7 +355,6 @@ model Work {
   variant      Int        @default(1)
   status       WorkStatus @default(PENDING)
 
-  // Загруженные страницы скана.
   pages ScanPage[]
 
   // Разбор ответов:
@@ -255,7 +371,7 @@ model Work {
   scannedAt   DateTime?
   checkedAt   DateTime?
   checkedById String?
-  checkedBy   Teacher?  @relation(fields: [checkedById], references: [id], onDelete: SetNull)
+  checkedBy   Account?  @relation(fields: [checkedById], references: [id], onDelete: SetNull)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -277,18 +393,20 @@ model ScanPage {
   @@index([workId, index])
 }
 
-// Картинки, вставленные в текст задания визуальным редактором. Отдельная
-// таблица нужна, чтобы знать владельца файла и уметь чиститьброшенные.
+// Картинки, вставленные в текст задания визуальным редактором.
 model MediaFile {
   id        String   @id @default(cuid())
+  schoolId  String?
+  school    School?  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   file      String   @unique
   mime      String   @default("image/webp")
   width     Int      @default(0)
   height    Int      @default(0)
   size      Int      @default(0)
   ownerId   String?
-  owner     Teacher? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  owner     Account? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
 
+  @@index([schoolId])
   @@index([ownerId])
 }

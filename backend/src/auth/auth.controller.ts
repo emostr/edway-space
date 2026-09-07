@@ -3,9 +3,17 @@ import { ConfigService } from '@nestjs/config';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.service';
 import { Public } from '../common/decorators/public.decorator';
-import { CurrentTeacher } from '../common/decorators/current-teacher.decorator';
-import { RequestTeacher, SESSION_COOKIE } from '../common/types';
-import { ChangePasswordDto, LoginDto, RegisterDto, UpdateProfileDto } from './dto/auth.dto';
+import { AllowSetup } from '../common/decorators/allow-setup.decorator';
+import { AllowExpired } from '../common/decorators/allow-expired.decorator';
+import { CurrentAccount } from '../common/decorators/current-account.decorator';
+import { RequestAccount, SESSION_COOKIE } from '../common/types';
+import {
+  ChangePasswordDto,
+  ConfirmTotpDto,
+  LoginDto,
+  TotpLoginDto,
+  UpdateProfileDto,
+} from './dto/auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -19,10 +27,9 @@ export class AuthController {
   }
 
   /**
-   * Флаг Secure выставляем по схеме публичного адреса, а не по NODE_ENV.
-   * Иначе платформа, поднятая по http (локальный docker compose), выдаёт
-   * Secure-cookie, которую Safari молча выбрасывает: вход проходит, а все
-   * последующие запросы получают 401.
+   * Флаг Secure выставляем по схеме публичного адреса, а не по NODE_ENV:
+   * платформа, поднятая по http, иначе выдаёт Secure-cookie, которую Safari
+   * молча выбрасывает — вход проходит, а следующий запрос получает 401.
    */
   private secureCookies(): boolean {
     return (this.config.get<string>('PUBLIC_URL') ?? '').startsWith('https://');
@@ -39,19 +46,6 @@ export class AuthController {
   }
 
   @Public()
-  @Post('register')
-  @HttpCode(201)
-  async register(
-    @Body() dto: RegisterDto,
-    @Req() req: FastifyRequest,
-    @Res({ passthrough: true }) reply: FastifyReply,
-  ) {
-    const result = await this.auth.register(dto, this.context(req));
-    this.setCookie(reply, result.token, result.expiresAt);
-    return { login: result.login, profile: result.profile };
-  }
-
-  @Public()
   @Post('login')
   @HttpCode(200)
   async login(
@@ -60,54 +54,108 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
     const result = await this.auth.login(dto.login, dto.password, this.context(req));
+    if (result.stage === 'totp') {
+      return { stage: 'totp', ticket: result.ticket };
+    }
     this.setCookie(reply, result.token, result.expiresAt);
-    return { profile: result.profile };
+    return { stage: 'session', profile: result.profile };
   }
 
+  @Public()
+  @Post('login/totp')
+  @HttpCode(200)
+  async loginTotp(
+    @Body() dto: TotpLoginDto,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const result = await this.auth.completeTotpLogin(dto.ticket, dto.code, this.context(req));
+    this.setCookie(reply, result.token, result.expiresAt);
+    return { stage: 'session', profile: result.profile };
+  }
+
+  @AllowSetup()
+  @AllowExpired()
   @Get('me')
-  me(@CurrentTeacher() teacher: RequestTeacher) {
-    return this.auth.profile(teacher.id);
+  me(@CurrentAccount() account: RequestAccount) {
+    return this.auth.profile(account.id);
   }
 
+  @AllowExpired()
   @Patch('me')
-  updateProfile(@CurrentTeacher() teacher: RequestTeacher, @Body() dto: UpdateProfileDto) {
-    return this.auth.updateProfile(teacher.id, dto.fullName, dto.subject);
+  updateProfile(@CurrentAccount() account: RequestAccount, @Body() dto: UpdateProfileDto) {
+    return this.auth.updateProfile(account.id, dto.fullName, dto.subject);
   }
 
+  @AllowSetup()
+  @AllowExpired()
   @Post('logout')
   @HttpCode(200)
-  async logout(@CurrentTeacher() teacher: RequestTeacher, @Res({ passthrough: true }) reply: FastifyReply) {
-    await this.auth.logout(teacher.sessionId);
+  async logout(@CurrentAccount() account: RequestAccount, @Res({ passthrough: true }) reply: FastifyReply) {
+    await this.auth.logout(account.sessionId);
     reply.clearCookie(SESSION_COOKIE, { path: '/' });
     return { ok: true };
   }
 
+  @AllowSetup()
+  @AllowExpired()
   @Post('password')
   @HttpCode(200)
-  async changePassword(@CurrentTeacher() teacher: RequestTeacher, @Body() dto: ChangePasswordDto) {
-    await this.auth.changePassword(teacher.id, dto.currentPassword, dto.newPassword);
-    return { ok: true };
+  changePassword(@CurrentAccount() account: RequestAccount, @Body() dto: ChangePasswordDto) {
+    return this.auth.changePassword(account.id, dto.currentPassword, dto.newPassword);
   }
 
+  @AllowSetup()
+  @AllowExpired()
+  @Post('totp/setup')
+  @HttpCode(200)
+  startTotp(@CurrentAccount() account: RequestAccount) {
+    return this.auth.startTotpSetup(account.id);
+  }
+
+  @AllowSetup()
+  @AllowExpired()
+  @Post('totp/confirm')
+  @HttpCode(200)
+  confirmTotp(@CurrentAccount() account: RequestAccount, @Body() dto: ConfirmTotpDto) {
+    return this.auth.confirmTotpSetup(account.id, dto.code);
+  }
+
+  @AllowExpired()
+  @Post('totp/disable')
+  @HttpCode(200)
+  disableTotp(@CurrentAccount() account: RequestAccount, @Body('password') password: string) {
+    return this.auth.disableTotp(account, password ?? '');
+  }
+
+  @AllowExpired()
+  @Post('backup-codes')
+  @HttpCode(200)
+  regenerateBackupCodes(@CurrentAccount() account: RequestAccount) {
+    return this.auth.regenerateBackupCodes(account.id);
+  }
+
+  @AllowExpired()
   @Get('sessions')
-  listSessions(@CurrentTeacher() teacher: RequestTeacher) {
-    return this.auth.listSessions(teacher.id, teacher.sessionId);
+  listSessions(@CurrentAccount() account: RequestAccount) {
+    return this.auth.listSessions(account.id, account.sessionId);
   }
 
+  @AllowExpired()
   @Delete('sessions/:id')
-  async revokeSession(@CurrentTeacher() teacher: RequestTeacher, @Param('id') id: string) {
-    await this.auth.revokeSession(teacher.id, id);
+  async revokeSession(@CurrentAccount() account: RequestAccount, @Param('id') id: string) {
+    await this.auth.revokeSession(account.id, id);
     return { ok: true };
   }
 
+  @AllowExpired()
   @Delete('sessions')
-  revokeOthers(@CurrentTeacher() teacher: RequestTeacher) {
-    return this.auth.revokeOtherSessions(teacher.id, teacher.sessionId);
+  revokeOthers(@CurrentAccount() account: RequestAccount) {
+    return this.auth.revokeOtherSessions(account.id, account.sessionId);
   }
 
-  /** Список коллег — из него выбирают, с кем поделиться тестом. */
   @Get('colleagues')
-  colleagues(@CurrentTeacher() teacher: RequestTeacher) {
-    return this.auth.colleagues(teacher.id);
+  colleagues(@CurrentAccount() account: RequestAccount) {
+    return this.auth.colleagues(account);
   }
 }

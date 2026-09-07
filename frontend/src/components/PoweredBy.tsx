@@ -1,6 +1,6 @@
 // Без логотипов: набор коротких подписей в том же наборном стиле,
 // что и заголовки разделов.
-const STACK = ['TypeScript', 'Next.js', 'NestJS', 'Prisma', 'PostgreSQL', 'Tailwind', 'Docker', 'Caddy'];
+const STACK = ['YuliaEngine'];
 
 export function PoweredBy() {
   return (

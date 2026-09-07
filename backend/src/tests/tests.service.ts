@@ -30,17 +30,21 @@ const DEFAULT_SCALE = { '5': 85, '4': 70, '3': 50 };
 export class TestsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Свои тесты плюс те, которыми поделились. */
-  private visibleWhere(teacherId: string): Prisma.TestWhereInput {
+  /**
+   * Свои тесты плюс те, которыми поделились коллеги. Школа в условии стоит
+   * всегда: даже случайно совпавший идентификатор не выведет за её границы.
+   */
+  private visibleWhere(schoolId: string, teacherId: string): Prisma.TestWhereInput {
     return {
+      schoolId,
       deletedAt: null,
       OR: [{ ownerId: teacherId }, { shares: { some: { teacherId } } }],
     };
   }
 
-  async list(teacherId: string): Promise<TestSummary[]> {
+  async list(schoolId: string, teacherId: string): Promise<TestSummary[]> {
     const rows = await this.prisma.test.findMany({
-      where: this.visibleWhere(teacherId),
+      where: this.visibleWhere(schoolId, teacherId),
       orderBy: { updatedAt: 'desc' },
       include: {
         owner: { select: { id: true, fullName: true } },
@@ -76,9 +80,9 @@ export class TestsService {
     });
   }
 
-  private async load(id: string, teacherId: string) {
+  private async load(id: string, schoolId: string, teacherId: string) {
     const test = await this.prisma.test.findFirst({
-      where: { id, ...this.visibleWhere(teacherId) },
+      where: { id, ...this.visibleWhere(schoolId, teacherId) },
       include: {
         owner: { select: { id: true, fullName: true, login: true } },
         questions: { orderBy: { order: 'asc' } },
@@ -92,8 +96,8 @@ export class TestsService {
     return test;
   }
 
-  async detail(id: string, teacherId: string) {
-    const test = await this.load(id, teacherId);
+  async detail(id: string, schoolId: string, teacherId: string) {
+    const test = await this.load(id, schoolId, teacherId);
     const share = test.shares.find((s) => s.teacherId === teacherId);
     const canEdit = test.ownerId === teacherId || Boolean(share?.canEdit);
 
@@ -132,8 +136,8 @@ export class TestsService {
     };
   }
 
-  private async requireEditable(id: string, teacherId: string) {
-    const test = await this.load(id, teacherId);
+  private async requireEditable(id: string, schoolId: string, teacherId: string) {
+    const test = await this.load(id, schoolId, teacherId);
     const share = test.shares.find((s) => s.teacherId === teacherId);
     if (test.ownerId !== teacherId && !share?.canEdit) {
       throw new ForbiddenException('Тест открыт только для чтения');
@@ -209,7 +213,7 @@ export class TestsService {
     });
   }
 
-  async create(teacherId: string, dto: SaveTestDto) {
+  async create(schoolId: string, teacherId: string, dto: SaveTestDto) {
     const variantCount = dto.variantCount ?? 1;
     this.validate(dto.questions, variantCount);
     const test = await this.prisma.test.create({
@@ -219,11 +223,12 @@ export class TestsService {
         instructions: (dto.instructions ?? '').trim(),
         variantCount,
         gradeScale: (dto.gradeScale ?? DEFAULT_SCALE) as Prisma.InputJsonValue,
+        schoolId,
         ownerId: teacherId,
         questions: { create: this.questionData(dto.questions, variantCount) },
       },
     });
-    return this.detail(test.id, teacherId);
+    return this.detail(test.id, schoolId, teacherId);
   }
 
   private questionData(questions: QuestionInput[], variantCount: number) {
@@ -243,8 +248,8 @@ export class TestsService {
    * Задания переписываются целиком: так проще и надёжнее, чем сводить правки
    * по одному. Уже выданные работы это не задевает — они держат снимок теста.
    */
-  async update(id: string, teacherId: string, dto: SaveTestDto) {
-    await this.requireEditable(id, teacherId);
+  async update(id: string, schoolId: string, teacherId: string, dto: SaveTestDto) {
+    await this.requireEditable(id, schoolId, teacherId);
     const variantCount = dto.variantCount ?? 1;
     this.validate(dto.questions, variantCount);
 
@@ -262,20 +267,20 @@ export class TestsService {
         },
       }),
     ]);
-    return this.detail(id, teacherId);
+    return this.detail(id, schoolId, teacherId);
   }
 
-  async setPublished(id: string, teacherId: string, published: boolean) {
-    const test = await this.requireEditable(id, teacherId);
+  async setPublished(id: string, schoolId: string, teacherId: string, published: boolean) {
+    const test = await this.requireEditable(id, schoolId, teacherId);
     if (published && test.questions.length === 0) {
       throw new BadRequestException('В тесте нет заданий — публиковать нечего');
     }
     await this.prisma.test.update({ where: { id }, data: { isPublished: published } });
-    return this.detail(id, teacherId);
+    return this.detail(id, schoolId, teacherId);
   }
 
-  async duplicate(id: string, teacherId: string) {
-    const source = await this.load(id, teacherId);
+  async duplicate(id: string, schoolId: string, teacherId: string) {
+    const source = await this.load(id, schoolId, teacherId);
     const copy = await this.prisma.test.create({
       data: {
         title: `${source.title} (копия)`,
@@ -283,6 +288,7 @@ export class TestsService {
         instructions: source.instructions,
         gradeScale: source.gradeScale as Prisma.InputJsonValue,
         variantCount: source.variantCount,
+        schoolId,
         ownerId: teacherId,
         questions: {
           create: source.questions.map((q) => ({
@@ -297,11 +303,11 @@ export class TestsService {
         },
       },
     });
-    return this.detail(copy.id, teacherId);
+    return this.detail(copy.id, schoolId, teacherId);
   }
 
-  async remove(id: string, teacherId: string) {
-    const test = await this.load(id, teacherId);
+  async remove(id: string, schoolId: string, teacherId: string) {
+    const test = await this.load(id, schoolId, teacherId);
     if (test.ownerId !== teacherId) {
       throw new ForbiddenException('Удалить тест может только его автор');
     }
@@ -310,15 +316,18 @@ export class TestsService {
     return { ok: true };
   }
 
-  async share(id: string, teacherId: string, targetId: string, canEdit: boolean) {
-    const test = await this.load(id, teacherId);
+  async share(id: string, schoolId: string, teacherId: string, targetId: string, canEdit: boolean) {
+    const test = await this.load(id, schoolId, teacherId);
     if (test.ownerId !== teacherId) {
       throw new ForbiddenException('Делиться тестом может только его автор');
     }
     if (targetId === teacherId) {
       throw new BadRequestException('Тест и так ваш');
     }
-    const target = await this.prisma.teacher.findFirst({ where: { id: targetId, deletedAt: null } });
+    // Делиться можно только с коллегой из своей школы.
+    const target = await this.prisma.account.findFirst({
+      where: { id: targetId, schoolId, deletedAt: null, role: { in: ['TEACHER', 'SCHOOL_ADMIN'] } },
+    });
     if (!target) {
       throw new NotFoundException('Учитель не найден');
     }
@@ -327,25 +336,25 @@ export class TestsService {
       create: { testId: id, teacherId: targetId, ownerId: teacherId, canEdit },
       update: { canEdit },
     });
-    return this.detail(id, teacherId);
+    return this.detail(id, schoolId, teacherId);
   }
 
-  async unshare(id: string, teacherId: string, targetId: string) {
-    const test = await this.load(id, teacherId);
+  async unshare(id: string, schoolId: string, teacherId: string, targetId: string) {
+    const test = await this.load(id, schoolId, teacherId);
     if (test.ownerId !== teacherId) {
       throw new ForbiddenException('Управлять доступом может только автор теста');
     }
     await this.prisma.testShare.deleteMany({ where: { testId: id, teacherId: targetId } });
-    return this.detail(id, teacherId);
+    return this.detail(id, schoolId, teacherId);
   }
 
   /**
    * Снимок для назначения: задания, ключи и пороги оценок замораживаются,
    * чтобы правка теста задним числом не переписала уже проверенные работы.
    */
-  async snapshot(testId: string): Promise<TestSnapshot> {
+  async snapshot(testId: string, schoolId: string): Promise<TestSnapshot> {
     const test = await this.prisma.test.findFirst({
-      where: { id: testId, deletedAt: null },
+      where: { id: testId, schoolId, deletedAt: null },
       include: { questions: { orderBy: { order: 'asc' } } },
     });
     if (!test) {
