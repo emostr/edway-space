@@ -57,6 +57,8 @@ test.describe('Настольное приложение', () => {
 
       await window.waitForURL((url) => url.href.startsWith(SERVER), { timeout: 30_000 });
       await expect(window.locator('link[rel="manifest"]')).toHaveCount(1);
+      // Приложение открывает вход, а не витрину: витрина нужна тем, кто ещё
+      // выбирает платформу.
       await expect(window.getByRole('heading', { name: 'Вход в кабинет' })).toBeVisible();
 
       // Адрес запомнился: в настройках приложения появился файл с ним.

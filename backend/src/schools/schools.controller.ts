@@ -20,6 +20,7 @@ export class SchoolsController {
   }
 
   /** Карточка своей школы — она же страница подписки. */
+  @Roles('SCHOOL_ADMIN', 'TEACHER')
   @AllowExpired()
   @Get('mine')
   mine(@CurrentAccount() account: RequestAccount) {

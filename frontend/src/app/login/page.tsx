@@ -6,24 +6,36 @@ import { useRouter } from 'next/navigation';
 import { Alert, Button, Icon, Input } from '@/lib/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { homeFor } from '@/lib/routes';
 import type { Profile } from '@/lib/types';
+
+type LoginResponse = { stage: 'session'; profile: Profile } | { stage: 'totp'; ticket: string };
 
 export default function LoginPage() {
   const router = useRouter();
   const { profile, ready, apply } = useAuth();
+
+  const [stage, setStage] = useState<'credentials' | 'totp'>('credentials');
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [ticket, setTicket] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   // Уже вошедшего пускать на форму входа незачем.
   useEffect(() => {
     if (ready && profile) {
-      router.replace('/dashboard');
+      router.replace(homeFor(profile));
     }
   }, [ready, profile, router]);
 
-  async function submit(event: React.FormEvent) {
+  async function finish(next: Profile) {
+    apply(next);
+    router.replace(homeFor(next));
+  }
+
+  async function submitCredentials(event: React.FormEvent) {
     event.preventDefault();
     if (!login.trim() || !password) {
       setError('Введите логин и пароль');
@@ -32,14 +44,37 @@ export default function LoginPage() {
     setBusy(true);
     setError('');
     try {
-      const res = await api.post<{ profile: Profile }>('/auth/login', {
-        login: login.trim(),
-        password,
-      });
-      apply(res.profile);
-      router.replace('/dashboard');
+      const res = await api.post<LoginResponse>('/auth/login', { login: login.trim(), password });
+      if (res.stage === 'totp') {
+        setTicket(res.ticket);
+        setStage('totp');
+      } else {
+        await finish(res.profile);
+      }
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitTotp(event: React.FormEvent) {
+    event.preventDefault();
+    if (!code.trim()) {
+      setError('Введите код из приложения');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api.post<{ profile: Profile }>('/auth/login/totp', {
+        ticket,
+        code: code.trim(),
+      });
+      await finish(res.profile);
+    } catch (e) {
+      setError(errorMessage(e));
+      setCode('');
     } finally {
       setBusy(false);
     }
@@ -50,12 +85,12 @@ export default function LoginPage() {
       <div className="hidden lg:flex flex-col justify-between p-12 bg-accent text-on-accent relative overflow-hidden">
         <div className="absolute -right-16 -top-16 w-72 h-72 border-[24px] border-on-accent/10" />
         <div className="absolute right-20 bottom-24 w-40 h-40 bg-on-accent/10" />
-        <div className="flex items-center gap-2.5 relative">
+        <Link href="/" className="flex items-center gap-2.5 relative">
           <span className="w-9 h-9 bg-on-accent text-accent flex items-center justify-center">
             <Icon name="graduation" size={20} />
           </span>
           <span className="text-xl font-extrabold tracking-normal">edway.space</span>
-        </div>
+        </Link>
         <div className="relative">
           <h1 className="text-4xl font-extrabold leading-tight tracking-normal">
             Тесты,
@@ -65,7 +100,7 @@ export default function LoginPage() {
           </h1>
           <p className="mt-4 max-w-sm text-on-accent/80 text-sm leading-relaxed">
             Соберите работу в конструкторе, распечатайте бланки, отсканируйте написанное — платформа
-            проверит закрытые задания сама и посчитает оценку.
+            проверит закрытые задания сама.
           </p>
         </div>
       </div>
@@ -83,37 +118,84 @@ export default function LoginPage() {
 
           <div className="w-10 h-1 bg-accent mb-4" />
 
-          <h2 className="text-2xl font-extrabold text-ink tracking-normal">Вход в кабинет</h2>
-          <p className="text-muted text-sm mt-1 mb-8">Логин платформа выдала вам при регистрации</p>
+          {stage === 'credentials' ? (
+            <>
+              <h2 className="text-2xl font-extrabold text-ink tracking-normal">Вход в кабинет</h2>
+              <p className="text-muted text-sm mt-1 mb-8">
+                Логин выдаёт администратор вашей школы
+              </p>
 
-          <form className="space-y-4" onSubmit={submit}>
-            {error ? <Alert variant="danger">{error}</Alert> : null}
-            <Input
-              value={login}
-              onChange={setLogin}
-              label="Логин"
-              placeholder="ivanova.m"
-              icon="user"
-              autoComplete="username"
-            />
-            <Input
-              value={password}
-              onChange={setPassword}
-              label="Пароль"
-              type="password"
-              placeholder="••••••••"
-              icon="lock"
-              autoComplete="current-password"
-            />
-            <Button type="submit" block size="lg" loading={busy} iconRight="arrowRight">
-              Войти
-            </Button>
-          </form>
+              <form className="space-y-4" onSubmit={submitCredentials}>
+                {error ? <Alert variant="danger">{error}</Alert> : null}
+                <Input
+                  value={login}
+                  onChange={setLogin}
+                  label="Логин"
+                  placeholder="ivanova.m"
+                  icon="user"
+                  autoComplete="username"
+                />
+                <Input
+                  value={password}
+                  onChange={setPassword}
+                  label="Пароль"
+                  type="password"
+                  placeholder="••••••••"
+                  icon="lock"
+                  autoComplete="current-password"
+                />
+                <Button type="submit" block size="lg" loading={busy} iconRight="arrowRight">
+                  Войти
+                </Button>
+              </form>
+            </>
+          ) : (
+            <>
+              <h2 className="text-2xl font-extrabold text-ink tracking-normal">
+                Подтверждение входа
+              </h2>
+              <p className="text-muted text-sm mt-1 mb-8">
+                Откройте приложение-аутентификатор и введите шестизначный код. Подойдёт и резервный
+                код.
+              </p>
+
+              <form className="space-y-4" onSubmit={submitTotp}>
+                {error ? <Alert variant="danger">{error}</Alert> : null}
+                <Input
+                  value={code}
+                  onChange={setCode}
+                  label="Код подтверждения"
+                  placeholder="000000"
+                  icon="shield"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                />
+                <Button type="submit" block size="lg" loading={busy} iconRight="arrowRight">
+                  Подтвердить
+                </Button>
+                <Button
+                  variant="ghost"
+                  block
+                  icon="arrowLeft"
+                  onClick={() => {
+                    setStage('credentials');
+                    setCode('');
+                    setTicket('');
+                    setError('');
+                    setPassword('');
+                  }}
+                >
+                  Назад
+                </Button>
+              </form>
+            </>
+          )}
 
           <div className="mt-8 pt-6 border-t border-line flex items-center justify-between gap-3">
-            <span className="text-xs text-muted">Ещё нет учётной записи?</span>
+            <span className="text-xs text-muted">Школы ещё нет?</span>
             <Link href="/register" className="text-xs text-accent hover:underline">
-              Зарегистрироваться
+              Зарегистрировать
             </Link>
           </div>
         </div>

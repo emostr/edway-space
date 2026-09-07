@@ -15,6 +15,9 @@ export function DropdownItem({ icon = '', danger = false, disabled = false, onCl
   return (
     <button
       type="button"
+      // Пункт меню, а не просто кнопка: так его находят и программы чтения
+      // с экрана, и автотесты.
+      role="menuitem"
       disabled={disabled}
       onClick={onClick}
       className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${

@@ -14,3 +14,4 @@ backend/src/generated/
 test-results/
 playwright-report/
 screenshots/
+.e2e-state/

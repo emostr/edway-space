@@ -94,7 +94,9 @@ async function openPlatform(window: BrowserWindow): Promise<void> {
   }
 
   serverUrl = url;
-  await window.loadURL(url);
+  // Открываем сразу вход, а не витрину: в приложении оказываются те, кто уже
+  // выбрал платформу. Вошедшего страница входа сама отправит в кабинет.
+  await window.loadURL(`${url}/login`);
 }
 
 function buildMenu(): void {
@@ -233,7 +235,7 @@ app.whenReady().then(async () => {
     }
     await writeConfig({ serverUrl: result.url });
     serverUrl = result.url;
-    await mainWindow?.loadURL(result.url);
+    await mainWindow?.loadURL(`${result.url}/login`);
     return { ok: true, message: 'Подключено' };
   });
 

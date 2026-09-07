@@ -1,39 +1,67 @@
 import { expect, test } from '@playwright/test';
-import { PASSWORD, dismissToasts, fillField, freeClass, login, open, register, stamp } from './helpers';
+import { PASSWORD, completeSetup, dismissToasts, fillField, open, register, registerSchool } from './helpers';
 
-test.describe('Вход и регистрация', () => {
-  test('учитель регистрируется, получает логин и попадает в кабинет', async ({ page }) => {
-    const teacher = await register(page);
+test.describe('Регистрация школы и вход', () => {
+  test('директор заводит школу, проходит настройку и попадает в кабинет', async ({ page }) => {
+    test.slow();
+    const created = await registerSchool(page);
 
-    expect(teacher.login).toMatch(/^[a-z]+\.[a-z]+\d*$/);
+    expect(created.login).toMatch(/^[a-z]+\.[a-z]+\d*$/);
+    expect(created.temporary.length).toBeGreaterThanOrEqual(10);
+
+    await completeSetup(page, created.login, created.temporary);
     await expect(page.getByRole('heading', { name: 'Обзор' })).toBeVisible();
-    await expect(page.getByText('edway', { exact: false }).first()).toBeVisible();
+    // Пробный период виден сразу: две недели и напоминание в шапке.
+    await expect(page.getByText(/Пробный период: осталось 14 дн/)).toBeVisible();
   });
 
-  test('выход завершает сессию, вход по выданному логину её возвращает', async ({ page }) => {
-    const teacher = await register(page);
+  test('до конца настройки платформа не отдаёт данные школы', async ({ page }) => {
+    test.slow();
+    const created = await registerSchool(page);
+
+    await open(page, '/login');
+    await fillField(page, page.getByLabel('Логин'), created.login);
+    await fillField(page, page.getByLabel('Пароль'), created.temporary);
+    await page.getByRole('button', { name: 'Войти' }).click();
+
+    // Кабинет закрыт до смены пароля и подключения второго фактора.
+    await expect(page).toHaveURL(/\/setup/);
+    await page.goto('/classes');
+    await expect(page).toHaveURL(/\/setup/);
+
+    const classes = await page.request.get('/api/classes');
+    expect(classes.status(), 'API должен отвечать 423, пока настройка не пройдена').toBe(423);
+  });
+
+  test('второй фактор обязателен для входа администратора', async ({ page }) => {
+    test.slow();
+    const school = await register(page);
     await dismissToasts(page);
 
     await open(page, '/settings');
     await page.getByRole('button', { name: 'Выйти из системы' }).click();
     await expect(page).toHaveURL(/\/login/);
 
-    // Кабинет закрыт: без сессии любая внутренняя страница уводит на вход.
-    await open(page, '/grades');
-    await expect(page).toHaveURL(/\/login/);
+    // Пароль верный, но без кода из приложения дальше не пускают.
+    await fillField(page, page.getByLabel('Логин'), school.login);
+    await fillField(page, page.getByLabel('Пароль'), school.password);
+    await page.getByRole('button', { name: 'Войти' }).click();
+    await expect(page.getByRole('heading', { name: 'Подтверждение входа' })).toBeVisible();
 
-    await login(page, teacher);
-    await expect(page.getByRole('heading', { name: 'Обзор' })).toBeVisible();
+    await fillField(page, page.getByLabel('Код подтверждения'), '000000');
+    await page.getByRole('button', { name: 'Подтвердить' }).click();
+    await expect(page.getByText('Неверный код подтверждения')).toBeVisible();
   });
 
   test('чужой пароль не пускает', async ({ page }) => {
-    const teacher = await register(page);
+    test.slow();
+    const school = await register(page);
     await dismissToasts(page);
     await open(page, '/settings');
     await page.getByRole('button', { name: 'Выйти из системы' }).click();
 
     await open(page, '/login');
-    await fillField(page, page.getByLabel('Логин'), teacher.login);
+    await fillField(page, page.getByLabel('Логин'), school.login);
     await fillField(page, page.getByLabel('Пароль'), `${PASSWORD}-неверный`);
     await page.getByRole('button', { name: 'Войти' }).click();
 
@@ -42,24 +70,22 @@ test.describe('Вход и регистрация', () => {
   });
 });
 
-test.describe('Разграничение доступа', () => {
-  test('чужие назначения, работы и оценки другому учителю не видны', async ({ page, browser }) => {
-    // Первый учитель проводит работу.
+test.describe('Границы школы', () => {
+  test('данные одной школы недостижимы из другой', async ({ page, browser }) => {
+    test.slow();
+    // Первая школа заводит класс и тест.
     await register(page);
     await dismissToasts(page);
 
-    const target = await freeClass(page);
     const classResponse = await page.request.post('/api/classes', {
-      data: { number: target.number, letter: target.letter },
+      data: { number: 9, letter: 'Э' },
     });
+    expect(classResponse.ok(), await classResponse.text()).toBeTruthy();
     const classId = (await classResponse.json()).id as string;
-    await page.request.post(`/api/classes/${classId}/students`, {
-      data: { students: [{ lastName: 'Тайнов', firstName: 'Семён' }] },
-    });
 
     const testResponse = await page.request.post('/api/tests', {
       data: {
-        title: `Закрытая работа ${stamp()}`,
+        title: 'Закрытая работа',
         questions: [
           {
             type: 'SHORT_ANSWER',
@@ -72,29 +98,26 @@ test.describe('Разграничение доступа', () => {
       },
     });
     const testId = (await testResponse.json()).id as string;
-    await page.request.post(`/api/tests/${testId}/publish`);
 
-    const assignmentResponse = await page.request.post('/api/assignments', {
-      data: { testId, classId, date: '2026-10-01', spare: 0 },
-    });
-    const assignmentId = (await assignmentResponse.json()).id as string;
-    const detail = await (await page.request.get(`/api/assignments/${assignmentId}`)).json();
-    const workId = detail.works[0].id as string;
-
-    // Второй учитель заходит со своей сессией.
+    // Вторая школа приходит со своей сессией.
     const other = await browser.newContext();
     const otherPage = await other.newPage();
     await register(otherPage);
     await dismissToasts(otherPage);
 
-    const list = await (await otherPage.request.get('/api/assignments')).json();
-    expect(list.some((row: { id: string }) => row.id === assignmentId)).toBe(false);
+    const classes = await (await otherPage.request.get('/api/classes')).json();
+    expect(classes.some((row: { id: string }) => row.id === classId)).toBe(false);
 
-    expect((await otherPage.request.get(`/api/assignments/${assignmentId}`)).status()).toBe(404);
-    expect((await otherPage.request.get(`/api/works/${workId}`)).status()).toBe(404);
+    // Прямые ссылки на чужие сущности закрыты.
+    expect((await otherPage.request.get(`/api/classes/${classId}`)).status()).toBe(404);
+    expect((await otherPage.request.get(`/api/tests/${testId}`)).status()).toBe(404);
 
-    const journal = await (await otherPage.request.get('/api/grades')).json();
-    expect(journal.some((row: { assignmentId: string }) => row.assignmentId === assignmentId)).toBe(false);
+    // И назначить чужой тест своему классу тоже нельзя.
+    const own = await (await otherPage.request.post('/api/classes', { data: { number: 9, letter: 'Ю' } })).json();
+    const attempt = await otherPage.request.post('/api/assignments', {
+      data: { testId, classId: own.id, date: '2026-10-01' },
+    });
+    expect(attempt.status()).toBe(404);
 
     await other.close();
   });

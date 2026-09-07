@@ -2,12 +2,154 @@ export type QuestionType = 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'SHORT_ANSWER' 
 
 export type WorkStatus = 'PENDING' | 'RECOGNIZED' | 'NEEDS_REVIEW' | 'CHECKED';
 
+export type AccountRole = 'PLATFORM_ADMIN' | 'SCHOOL_ADMIN' | 'TEACHER';
+
+export type SchoolStatus = 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'BLOCKED';
+
+export type SetupStep = 'password' | 'totp' | 'done';
+
+export interface SchoolBrief {
+  id: string;
+  name: string;
+  slug: string;
+  status: SchoolStatus;
+  paidUntil: string;
+  daysLeft: number;
+}
+
 export interface Profile {
   id: string;
   login: string;
   fullName: string;
   subject: string;
+  role: AccountRole;
+  mustChangePassword: boolean;
+  totpEnabled: boolean;
+  setupStep: SetupStep;
+  unusedBackupCodes: number;
+  school: SchoolBrief | null;
   createdAt: string;
+}
+
+export interface SchoolDetail {
+  id: string;
+  name: string;
+  slug: string;
+  city: string;
+  contactEmail: string;
+  contactPhone: string;
+  status: SchoolStatus;
+  paidUntil: string;
+  daysLeft: number;
+  createdAt: string;
+  counts: { accounts: number; classes: number; tests: number; assignments: number };
+  payments: { id: string; amount: number; months: number; succeededAt: string | null; description: string }[];
+}
+
+export interface StaffRow {
+  id: string;
+  login: string;
+  fullName: string;
+  subject: string;
+  role: AccountRole;
+  totpEnabled: boolean;
+  mustChangePassword: boolean;
+  tempPassword: string | null;
+  activeSessions: number;
+  lastSeenAt: string | null;
+  createdAt: string;
+}
+
+export interface Plan {
+  code: string;
+  months: number;
+  amount: number;
+  amountLabel: string;
+  title: string;
+  description: string;
+  /** false — касса в учебном режиме: платёж не списывает деньги. */
+  live: boolean;
+}
+
+export interface CheckoutResult {
+  paymentId: string;
+  confirmationUrl: string | null;
+  amount: number;
+  amountLabel: string;
+  months: number;
+  live: boolean;
+  schoolId?: string;
+}
+
+export interface PaymentResult {
+  status: 'PENDING' | 'SUCCEEDED' | 'CANCELED';
+  amountLabel: string;
+  months: number;
+  school: { name: string; paidUntil: string };
+  credentials: { login: string; temporaryPassword: string } | null;
+}
+
+export interface PaymentRow {
+  id: string;
+  externalId: string;
+  status: 'PENDING' | 'SUCCEEDED' | 'CANCELED';
+  amount: number;
+  amountLabel: string;
+  months: number;
+  description: string;
+  createdAt: string;
+  succeededAt: string | null;
+}
+
+export interface SchoolCredentials {
+  schoolId: string;
+  schoolName: string;
+  login: string;
+  temporaryPassword: string;
+  paidUntil: string;
+  trialDays: number;
+}
+
+/** Сводка панели платформы. */
+export interface PlatformOverview {
+  schools: {
+    total: number;
+    trial: number;
+    active: number;
+    expired: number;
+    blocked: number;
+    newThisMonth: number;
+    expiringSoon: number;
+  };
+  money: {
+    total: number;
+    totalLabel: string;
+    month: number;
+    monthLabel: string;
+    payments: number;
+  };
+}
+
+export interface PlatformSchoolRow {
+  id: string;
+  name: string;
+  slug: string;
+  city: string;
+  contactEmail: string;
+  contactPhone: string;
+  status: SchoolStatus;
+  paidUntil: string;
+  daysLeft: number;
+  note: string;
+  createdAt: string;
+  counts: { accounts: number; classes: number; assignments: number };
+  paid: number;
+}
+
+export interface PlatformPaymentRow extends PaymentRow {
+  schoolId: string;
+  schoolName: string;
+  payerEmail: string;
 }
 
 export interface Colleague {

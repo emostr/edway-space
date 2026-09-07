@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Avatar, Icon } from '@/lib/ui';
 import { useAuth } from '@/lib/auth';
+import { ROLE_LABELS } from '@/lib/catalog';
+import type { AccountRole } from '@/lib/types';
 
 interface NavLink {
   href: string;
@@ -16,7 +18,7 @@ interface NavSection {
   links: NavLink[];
 }
 
-const SECTIONS: NavSection[] = [
+const TEACHER_NAV: NavSection[] = [
   {
     title: 'Работа',
     links: [
@@ -38,6 +40,40 @@ const SECTIONS: NavSection[] = [
   },
 ];
 
+const SCHOOL_ADMIN_EXTRA: NavSection = {
+  title: 'Школа',
+  links: [
+    { href: '/school', label: 'Сотрудники', icon: 'users' },
+    { href: '/subscription', label: 'Подписка', icon: 'award' },
+  ],
+};
+
+const PLATFORM_NAV: NavSection[] = [
+  {
+    title: 'Платформа',
+    links: [
+      { href: '/admin', label: 'Сводка', icon: 'dashboard' },
+      { href: '/admin/schools', label: 'Школы', icon: 'school' },
+      { href: '/admin/payments', label: 'Платежи', icon: 'award' },
+    ],
+  },
+  {
+    title: 'Прочее',
+    links: [{ href: '/settings', label: 'Настройки', icon: 'settings' }],
+  },
+];
+
+function navFor(role: AccountRole): NavSection[] {
+  if (role === 'PLATFORM_ADMIN') {
+    return PLATFORM_NAV;
+  }
+  if (role === 'SCHOOL_ADMIN') {
+    // У директора те же разделы, что и у учителя: он тоже ведёт свои классы.
+    return [...TEACHER_NAV.slice(0, 2), SCHOOL_ADMIN_EXTRA, ...TEACHER_NAV.slice(2)];
+  }
+  return TEACHER_NAV;
+}
+
 interface Props {
   open?: boolean;
   onClose?: () => void;
@@ -46,9 +82,11 @@ interface Props {
 export function Sidebar({ open = false, onClose }: Props) {
   const pathname = usePathname();
   const { profile } = useAuth();
+  const sections = navFor(profile?.role ?? 'TEACHER');
+  const home = profile?.role === 'PLATFORM_ADMIN' ? '/admin' : '/dashboard';
 
   function isActive(href: string): boolean {
-    if (href === '/dashboard') {
+    if (href === '/dashboard' || href === '/admin') {
       return pathname === href;
     }
     return pathname === href || pathname.startsWith(href + '/');
@@ -60,20 +98,22 @@ export function Sidebar({ open = false, onClose }: Props) {
         open ? 'translate-x-0' : '-translate-x-full'
       }`}
     >
-      <Link href="/dashboard" className="h-16 flex items-center gap-2.5 px-5 border-b border-line shrink-0">
+      <Link href={home} className="h-16 flex items-center gap-2.5 px-5 border-b border-line shrink-0">
         <span className="w-8 h-8 bg-accent flex items-center justify-center shrink-0 text-on-accent">
           <Icon name="graduation" size={18} />
         </span>
-        <div className="leading-tight">
+        <div className="leading-tight min-w-0">
           <div className="font-extrabold text-ink tracking-normal">
             edway<span className="text-accent">.space</span>
           </div>
-          <div className="text-[10px] text-faint uppercase font-bold">Кабинет учителя</div>
+          <div className="text-[10px] text-faint uppercase font-bold truncate">
+            {profile?.role === 'PLATFORM_ADMIN' ? 'Панель платформы' : (profile?.school?.name ?? 'Кабинет')}
+          </div>
         </div>
       </Link>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
-        {SECTIONS.map((section) => (
+        {sections.map((section) => (
           <div key={section.title}>
             <div className="ng-label text-faint px-3 mb-1.5">{section.title}</div>
             {section.links.map((link) => (
@@ -108,7 +148,7 @@ export function Sidebar({ open = false, onClose }: Props) {
             <div className="min-w-0 flex-1 leading-tight">
               <div className="text-sm font-bold text-ink truncate">{profile.fullName}</div>
               <div className="text-[11px] text-accent font-semibold uppercase tracking-normal truncate">
-                {profile.subject || 'Учитель'}
+                {ROLE_LABELS[profile.role] ?? 'Учитель'}
               </div>
             </div>
             <span className="text-faint">

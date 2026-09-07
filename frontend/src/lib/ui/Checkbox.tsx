@@ -6,14 +6,28 @@ interface Props {
   checked?: boolean;
   onChange?: (checked: boolean) => void;
   label?: string;
+  /** Нужен, когда подпись стоит рядом отдельным текстом, а не внутри. */
+  ariaLabel?: string;
   disabled?: boolean;
   className?: string;
 }
 
-export function Checkbox({ checked = false, onChange, label = '', disabled = false, className = '' }: Props) {
+export function Checkbox({
+  checked = false,
+  onChange,
+  label = '',
+  ariaLabel,
+  disabled = false,
+  className = '',
+}: Props) {
   return (
     <button
       type="button"
+      // Это флажок, а не кнопка: без роли его не найдут ни программы чтения
+      // с экрана, ни автотесты.
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={ariaLabel || label || undefined}
       disabled={disabled}
       onClick={() => !disabled && onChange?.(!checked)}
       className={`flex w-fit items-center gap-2.5 select-none text-left ${

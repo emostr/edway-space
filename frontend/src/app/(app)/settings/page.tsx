@@ -8,7 +8,7 @@ import { notify } from '@/lib/notify';
 import { ACCENTS, useTheme } from '@/lib/theme';
 import { useAuth } from '@/lib/auth';
 import { formatRelative } from '@/lib/format';
-import { SUBJECTS } from '@/lib/catalog';
+import { ROLE_LABELS, SUBJECTS } from '@/lib/catalog';
 import type { Profile } from '@/lib/types';
 
 interface SessionRow {
@@ -32,6 +32,7 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [busy, setBusy] = useState(false);
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
 
   useEffect(() => {
     if (profile) {
@@ -103,6 +104,25 @@ export default function SettingsPage() {
     }
   }
 
+  /** Резервные коды выдаются заново, старые перестают работать. */
+  async function regenerateCodes() {
+    const ok = await notify.confirm({
+      title: 'Выпустить новые резервные коды?',
+      text: 'Прежние десять кодов перестанут работать сразу.',
+      confirmText: 'Выпустить',
+      icon: 'question',
+    });
+    if (!ok) {
+      return;
+    }
+    try {
+      const res = await api.post<{ backupCodes: string[] }>('/auth/backup-codes', {});
+      setBackupCodes(res.backupCodes);
+    } catch (e) {
+      notify.error('Не удалось', { text: errorMessage(e) });
+    }
+  }
+
   async function doLogout() {
     await logout();
     router.replace('/login');
@@ -115,6 +135,10 @@ export default function SettingsPage() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <Card title="Профиль" subtitle={profile ? `Логин: ${profile.login}` : ''}>
           <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="accent">{ROLE_LABELS[profile?.role ?? 'TEACHER']}</Badge>
+              {profile?.school ? <Badge variant="neutral">{profile.school.name}</Badge> : null}
+            </div>
             <Input value={fullName} onChange={setFullName} label="Фамилия и имя" />
             <Select
               value={subject}
@@ -174,6 +198,64 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+        </Card>
+
+        <Card
+          title="Второй фактор"
+          subtitle={
+            profile?.totpEnabled
+              ? 'Подключён: вход подтверждается кодом из приложения'
+              : 'Не подключён'
+          }
+        >
+          {profile?.totpEnabled ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="success" dot>
+                  Работает
+                </Badge>
+                <span className="text-sm text-muted">
+                  Резервных кодов осталось: {profile.unusedBackupCodes}
+                </span>
+              </div>
+
+              {backupCodes.length ? (
+                <div>
+                  <div className="ng-label text-muted mb-2">Новые коды — запишите их сейчас</div>
+                  <div className="grid grid-cols-2 gap-2 font-mono text-sm text-ink">
+                    {backupCodes.map((code) => (
+                      <div key={code} className="border border-line bg-surface-2 px-3 py-2 text-center">
+                        {code}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <Button variant="secondary" icon="refresh" onClick={regenerateCodes}>
+                Новые резервные коды
+              </Button>
+              {profile.role === 'TEACHER' ? (
+                <p className="text-xs text-faint">
+                  Отключить второй фактор может администратор школы — обратитесь к нему.
+                </p>
+              ) : (
+                <p className="text-xs text-faint">
+                  Администратору отключать второй фактор нельзя: он распоряжается доступами школы.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-muted">
+                Второй фактор защищает данные учеников, если пароль попадёт в чужие руки. Для учителя
+                он необязателен, но настоятельно рекомендуется.
+              </p>
+              <Button icon="shield" href="/setup">
+                Подключить
+              </Button>
+            </div>
+          )}
         </Card>
 
         <Card title="Пароль" subtitle="Меняйте, если пароль стал известен кому-то ещё">

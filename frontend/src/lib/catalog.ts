@@ -85,3 +85,35 @@ export const SUBJECTS = [
   'Физическая культура',
   'Начальные классы',
 ];
+
+export const ROLE_LABELS: Record<string, string> = {
+  PLATFORM_ADMIN: 'Администратор платформы',
+  SCHOOL_ADMIN: 'Администратор школы',
+  TEACHER: 'Учитель',
+};
+
+export const SCHOOL_STATUS_LABELS: Record<string, string> = {
+  TRIAL: 'Пробный период',
+  ACTIVE: 'Подписка действует',
+  EXPIRED: 'Подписка закончилась',
+  BLOCKED: 'Доступ закрыт',
+};
+
+export const SCHOOL_STATUS_TONES: Record<string, string> = {
+  TRIAL: 'info',
+  ACTIVE: 'success',
+  EXPIRED: 'warning',
+  BLOCKED: 'danger',
+};
+
+export const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Ожидает оплаты',
+  SUCCEEDED: 'Оплачен',
+  CANCELED: 'Отменён',
+};
+
+export const PAYMENT_STATUS_TONES: Record<string, string> = {
+  PENDING: 'warning',
+  SUCCEEDED: 'success',
+  CANCELED: 'neutral',
+};

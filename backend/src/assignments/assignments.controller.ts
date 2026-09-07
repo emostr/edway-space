@@ -1,10 +1,12 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { AssignmentsService } from './assignments.service';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { RequestAccount } from '../common/types';
 import { CreateAssignmentDto, UpdateAssignmentDto } from './dto/assignments.dto';
 
 @Controller('assignments')
+@Roles('SCHOOL_ADMIN', 'TEACHER')
 export class AssignmentsController {
   constructor(private readonly assignments: AssignmentsService) {}
 

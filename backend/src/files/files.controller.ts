@@ -3,9 +3,11 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { RequestAccount } from '../common/types';
 
 @Controller('files')
+@Roles('SCHOOL_ADMIN', 'TEACHER')
 export class FilesController {
   constructor(
     private readonly storage: StorageService,

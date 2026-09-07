@@ -52,7 +52,11 @@ async function bootstrap(): Promise<void> {
       route.config = { ...(route.config ?? {}), rateLimit: { max: 20, timeWindow: '1 minute' } };
     }
     if (/\/api\/(schools\/register|billing\/purchase)$/.test(route.url)) {
-      route.config = { ...(route.config ?? {}), rateLimit: { max: 5, timeWindow: '10 minutes' } };
+      // Регистрация школы — событие редкое, и защищать её надо жёстче входа.
+      // Порог вынесен в настройку: на стенде, где гоняют проверки, школы
+      // заводятся десятками подряд.
+      const max = Number(config.get('REGISTER_RATE_LIMIT', 5));
+      route.config = { ...(route.config ?? {}), rateLimit: { max, timeWindow: '10 minutes' } };
     }
   });
 

@@ -2,10 +2,12 @@ import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post,
 import { FastifyRequest } from 'fastify';
 import { WorksService } from './works.service';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { RequestAccount } from '../common/types';
 import { AssignStudentDto, AttachPageDto, UpdateAnswerDto } from './dto/works.dto';
 
 @Controller()
+@Roles('SCHOOL_ADMIN', 'TEACHER')
 export class WorksController {
   constructor(private readonly works: WorksService) {}
 

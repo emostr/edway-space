@@ -1,13 +1,23 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { totpCode } from './totp';
 
-/** Уникальный хвост: каждый прогон заводит своего учителя и свои классы. */
+export const PASSWORD = 'edway-test-2026-pass';
+
+export interface School {
+  name: string;
+  login: string;
+  /** Пароль после прохождения первичной настройки. */
+  password: string;
+}
+
+/** Уникальный хвост: каждый прогон заводит свою школу и свои классы. */
 export function stamp(): string {
   return Date.now().toString(36).slice(-5) + Math.random().toString(36).slice(2, 5);
 }
 
 /**
- * Фамилию платформа принимает только буквами: разряды счётчика превращаем
- * в слоги, чтобы каждый прогон получал непохожую, но допустимую фамилию.
+ * Названия и фамилии платформа принимает только буквами: разряды счётчика
+ * превращаем в слоги, чтобы каждый прогон получал непохожее, но допустимое имя.
  */
 export function nameStamp(): string {
   const syllables = ['ба', 'ве', 'ди', 'жо', 'ку', 'ло', 'ми', 'ны', 'пе', 'ра', 'со', 'ту'];
@@ -18,44 +28,6 @@ export function nameStamp(): string {
     value = Math.floor(value / syllables.length);
   }
   return out + syllables[Math.floor(Math.random() * syllables.length)];
-}
-
-export const PASSWORD = 'edway-test-2026';
-
-export interface Teacher {
-  lastName: string;
-  firstName: string;
-  login: string;
-}
-
-/** Регистрация через интерфейс: логин платформа показывает в модалке. */
-export async function register(page: Page): Promise<Teacher> {
-  const lastName = `Тестов${nameStamp()}`;
-  const firstName = 'Пётр';
-
-  await open(page, '/register');
-  // Обязательные поля подписаны со звёздочкой — сверяем начало метки.
-  await fillField(page, page.getByLabel(/^Фамилия/), lastName);
-  await fillField(page, page.getByLabel(/^Имя/), firstName);
-  await fillField(page, page.getByLabel(/^Пароль \*/), PASSWORD);
-  await fillField(page, page.getByLabel(/^Пароль ещё раз/), PASSWORD);
-  await page.getByRole('button', { name: 'Создать кабинет' }).click();
-
-  const dialog = page.locator('.swal2-popup');
-  await expect(dialog).toBeVisible();
-  const login = (await dialog.locator('p').nth(1).innerText()).trim();
-  await dialog.getByRole('button', { name: /Записал/ }).click();
-
-  await expect(page).toHaveURL(/\/dashboard/);
-  return { lastName, firstName, login };
-}
-
-export async function login(page: Page, teacher: Teacher): Promise<void> {
-  await open(page, '/login');
-  await fillField(page, page.getByLabel('Логин'), teacher.login);
-  await fillField(page, page.getByLabel('Пароль'), PASSWORD);
-  await page.getByRole('button', { name: 'Войти' }).click();
-  await expect(page).toHaveURL(/\/dashboard/);
 }
 
 /**
@@ -69,8 +41,6 @@ export async function open(page: Page, path: string): Promise<void> {
 
 /**
  * Заполняет поле и убеждается, что значение осело в состоянии React.
- * Сразу после загрузки страница ещё не гидратирована: ввод в этот момент
- * попадает в DOM, но теряется на первой же перерисовке.
  */
 export async function fillField(page: Page, locator: Locator, value: string): Promise<void> {
   await expect(async () => {
@@ -88,11 +58,78 @@ export async function dismissToasts(page: Page): Promise<void> {
   }
 }
 
+/** Регистрация школы с сайта: две недели пробного периода. */
+export async function registerSchool(page: Page): Promise<{ name: string; login: string; temporary: string }> {
+  const suffix = nameStamp();
+  const name = `Школа ${suffix}`;
+
+  await open(page, '/register');
+  await fillField(page, page.getByLabel(/^Школа/), name);
+  await fillField(page, page.getByLabel(/^Ваша фамилия/), `Тестов${suffix}`);
+  await fillField(page, page.getByLabel(/^Имя/), 'Пётр');
+  await fillField(page, page.getByLabel(/^Почта/), `school-${stamp()}@example.org`);
+  // Без согласия с документами платформа регистрацию не примет.
+  await page.getByRole('checkbox', { name: 'Согласие с документами' }).click();
+  await page.getByRole('button', { name: 'Создать школу' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Школа создана' })).toBeVisible();
+  const values = page.locator('.text-2xl.font-extrabold');
+  const login = (await values.nth(0).innerText()).trim();
+  const temporary = (await values.nth(1).innerText()).trim();
+  return { name, login, temporary };
+}
+
+/**
+ * Первый вход администратора: смена временного пароля и подключение второго
+ * фактора. Без этого платформа не отдаёт данные школы вовсе.
+ */
+export async function completeSetup(page: Page, login: string, temporary: string): Promise<void> {
+  await open(page, '/login');
+  await fillField(page, page.getByLabel('Логин'), login);
+  await fillField(page, page.getByLabel('Пароль'), temporary);
+  await page.getByRole('button', { name: 'Войти' }).click();
+
+  await expect(page).toHaveURL(/\/setup/);
+  await fillField(page, page.getByLabel('Временный пароль'), temporary);
+  await fillField(page, page.getByLabel(/^Новый пароль$/), PASSWORD);
+  await fillField(page, page.getByLabel('Новый пароль ещё раз'), PASSWORD);
+  await page.getByRole('button', { name: 'Сменить пароль' }).click();
+
+  // Ключ показан на экране — тем же алгоритмом считаем код, что и телефон.
+  const secret = (await page.locator('.font-mono.text-lg').innerText()).trim();
+  await fillField(page, page.getByLabel('Код из приложения'), totpCode(secret));
+  await page.getByRole('button', { name: 'Подтвердить' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Резервные коды' })).toBeVisible();
+  await page.getByRole('button', { name: /Записал/ }).click();
+  await expect(page).toHaveURL(/\/dashboard/);
+}
+
+/** Школа «под ключ»: зарегистрирована, настроена, готова к работе. */
+export async function register(page: Page): Promise<School> {
+  const created = await registerSchool(page);
+  await completeSetup(page, created.login, created.temporary);
+  return { name: created.name, login: created.login, password: PASSWORD };
+}
+
+/** Повторный вход существующего сотрудника — уже со вторым фактором. */
+export async function signIn(page: Page, login: string, password: string, secret?: string): Promise<void> {
+  await open(page, '/login');
+  await fillField(page, page.getByLabel('Логин'), login);
+  await fillField(page, page.getByLabel('Пароль'), password);
+  await page.getByRole('button', { name: 'Войти' }).click();
+
+  if (secret) {
+    await fillField(page, page.getByLabel('Код подтверждения'), totpCode(secret));
+    await page.getByRole('button', { name: 'Подтвердить' }).click();
+  }
+}
+
 const LETTERS = 'АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЩЭЮЯ'.split('');
 
 /**
- * Классы в платформе общие для всей школы, поэтому прогон не должен занимать
- * фиксированный «7В»: спрашиваем список и берём первую свободную букву.
+ * Классы в школе общие, поэтому прогон не должен занимать фиксированный «7В»:
+ * спрашиваем список и берём первую свободную пару.
  */
 export async function freeClass(page: Page): Promise<{ number: number; letter: string; name: string }> {
   const response = await page.request.get('/api/classes');
@@ -107,4 +144,50 @@ export async function freeClass(page: Page): Promise<{ number: number; letter: s
     }
   }
   throw new Error('Свободных классов не осталось — очистите базу');
+}
+
+/**
+ * Вход администратора платформы. Учётная запись одна на всю платформу и
+ * заводится при первом запуске сервера, поэтому первый прогон проходит её
+ * настройку, а последующие берут сохранённые пароль и ключ.
+ */
+export async function platformAdmin(page: Page): Promise<{ login: string; password: string; secret: string }> {
+  const { existsSync, mkdirSync, readFileSync, writeFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+
+  // Не в test-results: эту папку Playwright очищает перед каждым прогоном,
+  // а пароль администратора платформы меняется ровно один раз.
+  const file = join(process.cwd(), '.e2e-state', 'platform-admin.json');
+  const login = process.env.E2E_ADMIN_LOGIN ?? 'admin';
+  const initial = process.env.E2E_ADMIN_PASSWORD ?? 'platform-admin-2026';
+  const password = 'edway-platform-2026-pass';
+
+  if (existsSync(file)) {
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as { password: string; secret: string };
+    await signIn(page, login, saved.password, saved.secret);
+    await expect(page).toHaveURL(/\/admin/);
+    return { login, ...saved };
+  }
+
+  await open(page, '/login');
+  await fillField(page, page.getByLabel('Логин'), login);
+  await fillField(page, page.getByLabel('Пароль'), initial);
+  await page.getByRole('button', { name: 'Войти' }).click();
+
+  await expect(page).toHaveURL(/\/setup/);
+  await fillField(page, page.getByLabel('Временный пароль'), initial);
+  await fillField(page, page.getByLabel(/^Новый пароль$/), password);
+  await fillField(page, page.getByLabel('Новый пароль ещё раз'), password);
+  await page.getByRole('button', { name: 'Сменить пароль' }).click();
+
+  const secret = (await page.locator('.font-mono.text-lg').innerText()).trim();
+  await fillField(page, page.getByLabel('Код из приложения'), totpCode(secret));
+  await page.getByRole('button', { name: 'Подтвердить' }).click();
+  await expect(page.getByRole('heading', { name: 'Резервные коды' })).toBeVisible();
+  await page.getByRole('button', { name: /Записал/ }).click();
+  await expect(page).toHaveURL(/\/admin/);
+
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify({ password, secret }), 'utf8');
+  return { login, password, secret };
 }
